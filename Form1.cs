@@ -1,144 +1,69 @@
 ﻿using System;
-using System.Diagnostics;
-using System.Drawing;
 using System.IO;
-using System.Text.RegularExpressions;
+using System.Linq;
 using System.Windows.Forms;
+using LUDUS.Services;
 
 namespace LUDUS {
     public partial class Form1 : Form {
+        private readonly AdbService _adbService;
+        private readonly DeviceManager _devMgr;
+        private readonly AppController _appCtrl;
+        private readonly ScreenCaptureService _capSvc;
+        private readonly ScreenRecognitionService _recSvc;
+        private readonly AutoCaptureService _autoCap;
+
         public Form1() {
             InitializeComponent();
 
-            btnConnect.Click += btnConnect_Click;
-            btnCapture.Click += btnCapture_Click;
-            btnLogin.Click += BtnLogin_Click;
+            // init services
+            _adbService = new AdbService();
+            _devMgr = new DeviceManager(_adbService);
+            _appCtrl = new AppController(_adbService);
+            _capSvc = new ScreenCaptureService();
+            _recSvc = new ScreenRecognitionService(
+                             Path.Combine(Application.StartupPath, "Main_Screen", "regions.xml"),
+                             Path.Combine(Application.StartupPath, "screen"));
+            _autoCap = new AutoCaptureService(
+                             _devMgr, _capSvc, _recSvc,
+                             Path.Combine(Application.StartupPath, "Screenshots"));
 
-            LoadDevices(); // Tự động load thiết bị khi mở form
+            // wire UI
+            btnConnect.Click += (s, e) => Connect();
+            btnOpenApp.Click += (s, e) => OpenApp();
+            btnCloseApp.Click += (s, e) => CloseApp();
+            _autoCap.OnLog += msg => richTextBoxLog.AppendText(msg + Environment.NewLine);
+
+            // startup sequence
+            Connect();
+            OpenApp();
+            _autoCap.Start(3000);
         }
 
-       
+        private void Connect() {
+            _devMgr.Refresh();
+            cmbDevices.Items.Clear();
+            cmbDevices.Items.AddRange(_devMgr.Devices.ToArray());
+            string dev = _devMgr.Devices.FirstOrDefault();
+            if (dev != null && _devMgr.Connect(dev))
+                Log($"Connected to {dev}");
+        }
 
-        private void Log(string text) {
-            richTextBoxLog.AppendText($"[{DateTime.Now:dd-MMM HH:mm:ss}] {text}\n");
+        private void OpenApp() {
+            var dev = _devMgr.CurrentDevice;
+            if (dev != null && _appCtrl.Open(dev, "com.studion.mergearena"))
+                Log("App opened");
+        }
+
+        private void CloseApp() {
+            var dev = _devMgr.CurrentDevice;
+            if (dev != null && _appCtrl.Close(dev, "com.studion.mergearena"))
+                Log("App closed");
+        }
+
+        private void Log(string msg) {
+            richTextBoxLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
             richTextBoxLog.ScrollToCaret();
-        }
-
-        private void LoadDevices() {
-            try {
-                var psi = new ProcessStartInfo("adb", "devices") {
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using (var process = Process.Start(psi)) {
-                    string output = process.StandardOutput.ReadToEnd();
-                    process.WaitForExit();
-
-                    var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                    cmbDevices.Items.Clear();
-
-                    foreach (var line in lines) {
-                        if (line.Contains("device") && !line.StartsWith("List of devices")) {
-                            var parts = line.Split('\t');
-                            if (parts.Length >= 2 && parts[1].Trim() == "device") {
-                                cmbDevices.Items.Add(parts[0].Trim());
-                            }
-                        }
-                    }
-
-                    if (cmbDevices.Items.Count > 0)
-                        cmbDevices.SelectedIndex = 0;
-
-                    Log("Đã tải danh sách thiết bị.");
-                }
-            } catch (Exception ex) {
-                Log("ADB lỗi: " + ex.Message);
-            }
-        }
-
-        private void btnConnect_Click(object sender, EventArgs e) {
-            try {
-                
-                var psi = new ProcessStartInfo("adb", $"connect {cmbDevices.SelectedItem}") {
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using (var process = Process.Start(psi)) {
-                    process.WaitForExit();
-                }
-
-                //LoadDevices(); // Reload sau khi connect
-                Log("Đã kết nối LDPlayer.");
-            } catch (Exception ex) {
-                Log("Lỗi kết nối ADB: " + ex.Message);
-            }
-        }
-
-        private void btnCapture_Click(object sender, EventArgs e) {
-            if (cmbDevices.SelectedItem == null) {
-                Log("Vui lòng chọn thiết bị.");
-                return;
-            }
-
-            string deviceId = cmbDevices.SelectedItem.ToString();
-            string fileName = "screen.png";
-
-            try {
-                var psi = new ProcessStartInfo {
-                    FileName = "adb",
-                    Arguments = $"-s {deviceId} exec-out screencap -p",
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true
-                };
-
-                using (var process = Process.Start(psi))
-                using (var fs = new FileStream(fileName, FileMode.Create, FileAccess.Write)) {
-                    process.StandardOutput.BaseStream.CopyTo(fs);
-                    process.WaitForExit();
-                }
-
-                if (File.Exists(fileName)) {
-                    byte[] bytes = File.ReadAllBytes(fileName);
-                    using (var ms = new MemoryStream(bytes)) {
-                        pictureBox1.Image = Image.FromStream(ms);
-                    }
-
-                    Log("Chụp màn hình thành công.");
-                }
-                else {
-                    Log("Không tìm thấy file ảnh.");
-                }
-            } catch (Exception ex) {
-                Log("Lỗi khi chụp ảnh: " + ex.Message);
-            }
-        }
-
-        private void BtnLogin_Click(object sender, EventArgs e) {
-            OpenAppOnLDPlayer(cmbDevices.SelectedItem.ToString(), "com.studion.mergearena");
-        }
-
-        private void OpenAppOnLDPlayer(string deviceId, string packageName) {
-            var psi = new ProcessStartInfo {
-                FileName = "adb",
-                Arguments = $"-s {deviceId} shell monkey -p {packageName} -c android.intent.category.LAUNCHER 1",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            var process = new Process { StartInfo = psi };
-            process.Start();
-            string output = process.StandardOutput.ReadToEnd();
-            string error = process.StandardError.ReadToEnd();
-            process.WaitForExit();
-
-            Log("Output: " + output);
-            Log("Error: " + error);
         }
     }
 }

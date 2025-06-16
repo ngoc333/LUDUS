@@ -54,6 +54,14 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Services\AdbService.cs" />
+    <Compile Include="Services\AppController.cs" />
+    <Compile Include="Services\AutoCaptureService.cs" />
+    <Compile Include="Services\DeviceManager.cs" />
+    <Compile Include="Services\ScreenCaptureService.cs" />
+    <Compile Include="Services\ScreenRecognitionService.cs" />
+    <Compile Include="Utils\ImageCompare.cs" />
+    <Compile Include="Utils\RegionLoader.cs" />
     <EmbeddedResource Include="Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>
     </EmbeddedResource>
