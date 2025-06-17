@@ -32,7 +32,7 @@ namespace LUDUS {
             btnConnect.Click += (s, e) => Connect();
             btnOpenApp.Click += (s, e) => OpenApp();
             btnCloseApp.Click += (s, e) => CloseApp();
-            _autoCap.OnLog += msg => richTextBoxLog.AppendText(msg + Environment.NewLine);
+            _autoCap.OnLog += Log;
 
             // startup sequence
             Connect();
