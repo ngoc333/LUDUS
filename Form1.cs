@@ -11,7 +11,9 @@ namespace LUDUS {
         private readonly DeviceManager _devMgr;
         private readonly AppController _appCtrl;
         private readonly ScreenCaptureService _capSvc;
-       // private readonly BattleAnalyzerService _battleAnalyzer;
+        private HeroNameOcrService _ocrSvc;
+        private BattleAnalyzerService _battleSvc;
+
 
         public Form1() {
             InitializeComponent();
@@ -22,15 +24,32 @@ namespace LUDUS {
             _appCtrl = new AppController(_adb);
             _capSvc = new ScreenCaptureService();
             string xmlPath = System.IO.Path.Combine(Application.StartupPath, "Main_Screen", "regions.xml");
-            string outFolder = System.IO.Path.Combine(Application.StartupPath, "Screenshots", "Cells");
-            //_battleAnalyzer = new BattleAnalyzerService(xmlPath, outFolder);
+            string outFolder = System.IO.Path.Combine(Application.StartupPath, "Screenshots", "HeroNames");
+            string regionsXml = Path.Combine(
+                Application.StartupPath, "Main_Screen", "regions.xml");
+
+            _ocrSvc = new HeroNameOcrService();
+            _battleSvc = new BattleAnalyzerService(
+                _adb, _capSvc, _ocrSvc, regionsXml, tapDelayMs: 100);
 
             // wiring
             btnConnect.Click += BtnConnect_Click;
+            btnCapture.Click += (s, e) => {
+                var dev = cmbDevices.SelectedItem as string;
+                if (string.IsNullOrEmpty(dev)) { Log("Select device first."); return; }
+                var img = _capSvc.Capture(dev);
+                if (img != null) {
+                    string outFile = Path.Combine(Application.StartupPath, "Screenshots", $"screen{DateTime.Now:HHmmss}.png");
+                    img.Save(outFile);
+                    Log($"Captured screenshot to {outFile}");
+                }
+                else {
+                    Log("Capture failed.");
+                }
+            };
             btnOpenApp.Click += BtnOpenApp_Click;
             btnCloseApp.Click += BtnCloseApp_Click;
             btnAnalyzeBattle.Click += BtnAnalyzeBattle_Click;
-            btnCompare.Click += BtnCompareCells_Click;
 
             // load devices
             LoadDevices();
@@ -71,82 +90,10 @@ namespace LUDUS {
         }
 
         private void BtnAnalyzeBattle_Click(object sender, EventArgs e) {
-            var dev = _devMgr.CurrentDevice;
-            if (string.IsNullOrEmpty(dev)) {
-                Log("⚠️ Chưa chọn thiết bị.");
-                return;
-            }
+            var dev = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(dev)) { Log("Select device."); return; }
+            _battleSvc.AnalyzeBattle(dev, Log);
 
-            try {
-                using (var screenshot = (Bitmap)_capSvc.Capture(dev))
-                using (var analyzer = new BattleAnalyzerService(
-                    regionsXmlPath: Path.Combine(Application.StartupPath, "Main_Screen", "regions.xml"),
-                    templatesFolder: Path.Combine(Application.StartupPath, "Templates"),
-                    outputFolder: Path.Combine(Application.StartupPath, "Screenshots", "Cells"),
-                    matchThreshold: 0.85)) {
-                    var results = analyzer.AnalyzeBattleScreen(screenshot);
-
-                    foreach (var kv in results) {
-                        if (kv.Value.Count == 1 && kv.Value[0] == "Empty")
-                            Log($"{kv.Key}: ⚪ Empty");
-                        else if (kv.Value.Count == 0)
-                            Log($"{kv.Key}: ❌ No match");
-                        else
-                            Log($"{kv.Key}: ✅ {string.Join(", ", kv.Value)}");
-                    }
-                }
-            } catch (Exception ex) {
-                Log($"❌ Error in AnalyzeBattle: {ex.Message}");
-            }
-        }
-
-
-        private void BtnCompareCells_Click(object sender, EventArgs e) {
-            // 1) Load tất cả cell_X_Y.png từ folder RawCells
-            string rawDir = Path.Combine(Application.StartupPath,
-                                "Screenshots", "Cells", "RawCells");
-            if (!Directory.Exists(rawDir)) {
-                Log("❌ Không tìm thư mục RawCells.");
-                return;
-            }
-
-            var cellBitmaps = new Dictionary<string, Bitmap>();
-            foreach (string file in Directory.GetFiles(rawDir, "cell_*.png")) {
-                string key = Path.GetFileNameWithoutExtension(file);
-                Bitmap bmp = new Bitmap(file);
-                cellBitmaps[key] = bmp;
-            }
-
-            if (cellBitmaps.Count < 2) {
-                Log("⚠️ Ít hơn 2 ô, không thể so sánh.");
-                foreach (var bmp in cellBitmaps.Values)
-                    bmp.Dispose();
-                return;
-            }
-
-            // 2) So sánh
-            List<Tuple<string, string, double>> matches;
-            using (var comparer = new CellComparisonService(
-                                        similarityThreshold: 0.25,
-                                        distanceThreshold: 30,
-                                        maxFeatures: 500)) {
-                matches = comparer.Compare(cellBitmaps);
-            }
-
-            // 3) Log kết quả
-            if (matches.Count == 0) {
-                Log("🔍 Không tìm thấy ô giống nhau.");
-            }
-            else {
-                foreach (var t in matches) {
-                    Log(string.Format("✔ {0} ≈ {1} (sim={2:F2})",
-                                      t.Item1, t.Item2, t.Item3));
-                }
-            }
-
-            // 4) Giải phóng bitmap
-            foreach (var bmp in cellBitmaps.Values)
-                bmp.Dispose();
         }
 
         private void Log(string msg) {

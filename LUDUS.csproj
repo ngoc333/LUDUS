@@ -72,6 +72,9 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <Reference Include="Tesseract, Version=5.2.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>packages\Tesseract.5.2.0\lib\net48\Tesseract.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Form1.cs">
@@ -86,11 +89,10 @@
     <Compile Include="Services\AppController.cs" />
     <Compile Include="Services\AutoCaptureService.cs" />
     <Compile Include="Services\BattleAnalyzerService.cs" />
-    <Compile Include="Services\CellComparisonService.cs" />
     <Compile Include="Services\DeviceManager.cs" />
+    <Compile Include="Services\HeroNameOcrService.cs" />
     <Compile Include="Services\ScreenCaptureService.cs" />
     <Compile Include="Services\ScreenRecognitionService.cs" />
-    <Compile Include="Services\TemplateMatcherService.cs" />
     <Compile Include="Utils\ImageCompare.cs" />
     <Compile Include="Utils\RegionLoader.cs" />
     <EmbeddedResource Include="Form1.resx">
@@ -127,5 +129,9 @@
     </PropertyGroup>
     <Error Condition="!Exists('packages\System.ValueTuple.4.6.1\build\net471\System.ValueTuple.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\System.ValueTuple.4.6.1\build\net471\System.ValueTuple.targets'))" />
     <Error Condition="!Exists('packages\OpenCvSharp4.runtime.win.4.11.0.20250507\build\net48\OpenCvSharp4.runtime.win.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\OpenCvSharp4.runtime.win.4.11.0.20250507\build\net48\OpenCvSharp4.runtime.win.props'))" />
+    <Error Condition="!Exists('packages\Tesseract.5.2.0\build\Tesseract.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Tesseract.5.2.0\build\Tesseract.targets'))" />
+    <Error Condition="!Exists('packages\Tesseract.Data.English.4.0.0\build\Tesseract.Data.English.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Tesseract.Data.English.4.0.0\build\Tesseract.Data.English.targets'))" />
   </Target>
+  <Import Project="packages\Tesseract.5.2.0\build\Tesseract.targets" Condition="Exists('packages\Tesseract.5.2.0\build\Tesseract.targets')" />
+  <Import Project="packages\Tesseract.Data.English.4.0.0\build\Tesseract.Data.English.targets" Condition="Exists('packages\Tesseract.Data.English.4.0.0\build\Tesseract.Data.English.targets')" />
 </Project>

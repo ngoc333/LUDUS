@@ -37,6 +37,14 @@ namespace LUDUS.Utils {
                 }
             }
 
+            // Đọc HeroInfo
+            var heroInfo = regions.Element("HeroInfo");
+            if (mySideCell != null) {
+                foreach (var xe in heroInfo.Elements("Region")) {
+                    AddRegionToList(list, xe, "HeroInfo");
+                }
+            }
+
             return list;
         }
 

@@ -38,7 +38,6 @@
             this.txtHeroName = new System.Windows.Forms.TextBox();
             this.cmbCells = new System.Windows.Forms.ComboBox();
             this.cmbDevices = new System.Windows.Forms.ComboBox();
-            this.btnCompare = new System.Windows.Forms.Button();
             this.flowLayoutPanel1.SuspendLayout();
             this.panel1.SuspendLayout();
             this.SuspendLayout();
@@ -51,7 +50,6 @@
             this.flowLayoutPanel1.Controls.Add(this.btnCapture);
             this.flowLayoutPanel1.Controls.Add(this.btnCrop);
             this.flowLayoutPanel1.Controls.Add(this.btnAnalyzeBattle);
-            this.flowLayoutPanel1.Controls.Add(this.btnCompare);
             this.flowLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Top;
             this.flowLayoutPanel1.Location = new System.Drawing.Point(0, 0);
             this.flowLayoutPanel1.Name = "flowLayoutPanel1";
@@ -189,15 +187,6 @@
             this.cmbDevices.Size = new System.Drawing.Size(121, 21);
             this.cmbDevices.TabIndex = 11;
             // 
-            // btnCompare
-            // 
-            this.btnCompare.Location = new System.Drawing.Point(495, 3);
-            this.btnCompare.Name = "btnCompare";
-            this.btnCompare.Size = new System.Drawing.Size(89, 23);
-            this.btnCompare.TabIndex = 11;
-            this.btnCompare.Text = "Compare";
-            this.btnCompare.UseVisualStyleBackColor = true;
-            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
@@ -231,7 +220,6 @@
         private System.Windows.Forms.TextBox txtHeroName;
         private System.Windows.Forms.ComboBox cmbCells;
         private System.Windows.Forms.ComboBox cmbDevices;
-        private System.Windows.Forms.Button btnCompare;
     }
 }
 

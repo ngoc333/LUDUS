@@ -1,4 +1,4 @@
-// Services/BattleAnalyzerService.cs
+﻿// Services/BattleAnalyzerService.cs
 using System;
 using System.Collections.Generic;
 using System.Drawing;
