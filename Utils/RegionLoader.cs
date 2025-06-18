@@ -8,6 +8,7 @@ namespace LUDUS.Utils {
     public class RegionInfo {
         public string Name { get; set; }
         public Rectangle Rect { get; set; }
+        public string Group { get; set; }
     }
 
     public static class RegionLoader {
@@ -17,27 +18,47 @@ namespace LUDUS.Utils {
                 return list;
 
             var doc = XDocument.Load(xmlPath);
-            foreach (var xe in doc.Root.Elements("Region")) {
-                var nameAttr = xe.Attribute("Name");
-                var xAttr = xe.Attribute("X");
-                var yAttr = xe.Attribute("Y");
-                var wAttr = xe.Attribute("Width");
-                var hAttr = xe.Attribute("Height");
-                if (nameAttr == null || xAttr == null || yAttr == null || wAttr == null || hAttr == null)
-                    continue;
+            var regions = doc.Root;
+            if (regions == null) return list;
 
-                list.Add(new RegionInfo {
-                    Name = nameAttr.Value,
-                    Rect = new Rectangle(
-                        int.Parse(xAttr.Value),
-                        int.Parse(yAttr.Value),
-                        int.Parse(wAttr.Value),
-                        int.Parse(hAttr.Value)
-                    )
-                });
+            // Đọc ScreenRegions
+            var screenRegions = regions.Element("ScreenRegions");
+            if (screenRegions != null) {
+                foreach (var xe in screenRegions.Elements("Region")) {
+                    AddRegionToList(list, xe, "ScreenRegions");
+                }
+            }
+
+            // Đọc MySideCell
+            var mySideCell = regions.Element("MySideCell");
+            if (mySideCell != null) {
+                foreach (var xe in mySideCell.Elements("Region")) {
+                    AddRegionToList(list, xe, "MySideCell");
+                }
             }
 
             return list;
+        }
+
+        private static void AddRegionToList(List<RegionInfo> list, XElement xe, string group) {
+            var nameAttr = xe.Attribute("Name");
+            var xAttr = xe.Attribute("X");
+            var yAttr = xe.Attribute("Y");
+            var wAttr = xe.Attribute("Width");
+            var hAttr = xe.Attribute("Height");
+            if (nameAttr == null || xAttr == null || yAttr == null || wAttr == null || hAttr == null)
+                return;
+
+            list.Add(new RegionInfo {
+                Name = nameAttr.Value,
+                Rect = new Rectangle(
+                    int.Parse(xAttr.Value),
+                    int.Parse(yAttr.Value),
+                    int.Parse(wAttr.Value),
+                    int.Parse(hAttr.Value)
+                ),
+                Group = group
+            });
         }
     }
 }
