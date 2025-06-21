@@ -12,7 +12,7 @@ namespace LUDUS.Utils {
                     if (a.GetPixel(x, y).ToArgb() == b.GetPixel(x, y).ToArgb())
                         match++;
 
-            return (double)match / total >= threshold;
+            return(double)match / total  >= threshold;
         }
     }
 }

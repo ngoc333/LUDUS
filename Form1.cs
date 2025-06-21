@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using LUDUS.Services;
@@ -11,9 +9,13 @@ namespace LUDUS {
         private readonly DeviceManager _devMgr;
         private readonly AppController _appCtrl;
         private readonly ScreenCaptureService _capSvc;
-        private HeroNameOcrService _ocrSvc;
-        private BattleAnalyzerService _battleSvc;
-
+        private readonly HeroMergeService _mergeService;
+        private readonly HeroNameOcrService _ocrSvc;
+        private readonly BattleAnalyzerService _battleSvc;
+        private readonly ScreenDetectionService _screenSvc;
+        private readonly GameManagerService _gameMgr;
+        private readonly PvpNavigationService _pvpNav;
+        private readonly string _packageName = "com.studion.mergearena";
 
         public Form1() {
             InitializeComponent();
@@ -23,23 +25,40 @@ namespace LUDUS {
             _devMgr = new DeviceManager(_adb);
             _appCtrl = new AppController(_adb);
             _capSvc = new ScreenCaptureService();
-            string xmlPath = System.IO.Path.Combine(Application.StartupPath, "Main_Screen", "regions.xml");
-            string outFolder = System.IO.Path.Combine(Application.StartupPath, "Screenshots", "HeroNames");
-            string regionsXml = Path.Combine(
-                Application.StartupPath, "Main_Screen", "regions.xml");
+            _mergeService = new HeroMergeService(_adb);
+            
+            string xmlPath = Path.Combine(Application.StartupPath, "regions.xml");
+            string outFolder = Path.Combine(Application.StartupPath, "Screenshots", "HeroNames");
+            string templatesFolder = Path.Combine(Application.StartupPath, "Templates");
+
+
+            _pvpNav = new PvpNavigationService(
+                _adb, _capSvc, xmlPath, templatesFolder
+            );
+
+            // sau _capSvc = new ScreenCaptureService();
+            _screenSvc = new ScreenDetectionService(
+                _capSvc, _adb, xmlPath
+                , templatesFolder
+            );
+
+            
 
             _ocrSvc = new HeroNameOcrService();
             _battleSvc = new BattleAnalyzerService(
-                _adb, _capSvc, _ocrSvc, regionsXml, tapDelayMs: 100);
-
+                 _capSvc, _adb, _ocrSvc
+                 , _mergeService, xmlPath, templatesFolder, _screenSvc);
+            _gameMgr = new GameManagerService(
+                _adb, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _packageName
+            );
             // wiring
-            btnConnect.Click += BtnConnect_Click;
+            //btnConnect.Click += BtnConnect_Click;
             btnCapture.Click += (s, e) => {
                 var dev = cmbDevices.SelectedItem as string;
                 if (string.IsNullOrEmpty(dev)) { Log("Select device first."); return; }
                 var img = _capSvc.Capture(dev);
                 if (img != null) {
-                    string outFile = Path.Combine(Application.StartupPath, "Screenshots", $"screen{DateTime.Now:HHmmss}.png");
+                    string outFile = Path.Combine(Application.StartupPath, "Screenshots", $"screen{DateTime.Now:yyyyMMddHHmmss}.png");
                     img.Save(outFile);
                     Log($"Captured screenshot to {outFile}");
                 }
@@ -50,11 +69,29 @@ namespace LUDUS {
             btnOpenApp.Click += BtnOpenApp_Click;
             btnCloseApp.Click += BtnCloseApp_Click;
             btnAnalyzeBattle.Click += BtnAnalyzeBattle_Click;
+            btnScreenDetect.Click += BtnScreenDetect_Click;
+            btnStart.Click += BtnStart_Click;
 
             // load devices
             LoadDevices();
         }
 
+        private async void BtnStart_Click(object sender, EventArgs e) {
+            var deviceId = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(deviceId)) { Log("Select device."); return; }
+            await _gameMgr.EnsureGameAndDetectAsync(deviceId, _ocrSvc.Recognize, Log);
+        }
+
+        private void BtnScreenDetect_Click(object sender, EventArgs e) {
+            var dev = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(dev)) {
+                Log("Select device first.");
+                return;
+            }
+            // Gọi DetectScreen và log kết quả
+            string screen = _screenSvc.DetectScreen(dev, Log);
+
+        }
 
         private void LoadDevices() {
             _devMgr.Refresh();
@@ -75,7 +112,7 @@ namespace LUDUS {
 
         private void BtnOpenApp_Click(object sender, EventArgs e) {
             var dev = _devMgr.CurrentDevice;
-            if (dev != null && _appCtrl.Open(dev, "com.studion.mergearena"))
+            if (dev != null && _appCtrl.Open(dev, _packageName))
                 Log("App opened.");
             else
                 Log("Open app failed.");
@@ -83,7 +120,7 @@ namespace LUDUS {
 
         private void BtnCloseApp_Click(object sender, EventArgs e) {
             var dev = _devMgr.CurrentDevice;
-            if (dev != null && _appCtrl.Close(dev, "com.studion.mergearena"))
+            if (dev != null && _appCtrl.Close(dev, _packageName))
                 Log("App closed.");
             else
                 Log("Close app failed.");
@@ -97,8 +134,17 @@ namespace LUDUS {
         }
 
         private void Log(string msg) {
+            if (richTextBoxLog.InvokeRequired) {
+                richTextBoxLog.Invoke(new Action(() =>
+                {
+                    richTextBoxLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
+                    richTextBoxLog.ScrollToCaret();
+                }));
+                return;
+            }
             richTextBoxLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
             richTextBoxLog.ScrollToCaret();
         }
+
     }
 }

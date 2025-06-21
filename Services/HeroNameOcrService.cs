@@ -10,7 +10,7 @@ namespace LUDUS.Services {
 
         public HeroNameOcrService() {
             _engine = new TesseractEngine(@"./tessdata", "eng", EngineMode.Default);
-            _engine.SetVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+            _engine.SetVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
         }
 
         public string Recognize(Bitmap src) {

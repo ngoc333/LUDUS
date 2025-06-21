@@ -29,6 +29,13 @@ namespace LUDUS.Utils {
                 }
             }
 
+            var mainScreen = regions.Element("MainScreen");
+            if (screenRegions != null) {
+                foreach (var xe in mainScreen.Elements("Region")) {
+                    AddRegionToList(list, xe, "MainScreen");
+                }
+            }
+
             // Đọc MySideCell
             var mySideCell = regions.Element("MySideCell");
             if (mySideCell != null) {
