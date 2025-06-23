@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
+using System.Threading;
 using System.Windows.Forms;
+using LUDUS.Logic;
 using LUDUS.Services;
 
 namespace LUDUS {
@@ -13,9 +15,12 @@ namespace LUDUS {
         private readonly HeroNameOcrService _ocrSvc;
         private readonly BattleAnalyzerService _battleSvc;
         private readonly ScreenDetectionService _screenSvc;
-        private readonly GameManagerService _gameMgr;
+        private readonly LudusAutoService _ludusAutoService;
         private readonly PvpNavigationService _pvpNav;
         private readonly string _packageName = "com.studion.mergearena";
+
+        private CancellationTokenSource _cancellationTokenSource;
+        private bool _isAutoRunning = false;
 
         public Form1() {
             InitializeComponent();
@@ -48,9 +53,12 @@ namespace LUDUS {
             _battleSvc = new BattleAnalyzerService(
                  _capSvc, _adb, _ocrSvc
                  , _mergeService, xmlPath, templatesFolder, _screenSvc);
-            _gameMgr = new GameManagerService(
+            
+            // Initialize the new auto service
+            _ludusAutoService = new LudusAutoService(
                 _adb, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _packageName
             );
+
             // wiring
             //btnConnect.Click += BtnConnect_Click;
             btnCapture.Click += (s, e) => {
@@ -77,9 +85,49 @@ namespace LUDUS {
         }
 
         private async void BtnStart_Click(object sender, EventArgs e) {
+            if (_isAutoRunning)
+            {
+                // User wants to stop
+                Log("Stop request received. Shutting down gracefully...");
+                _cancellationTokenSource?.Cancel();
+                btnStart.Enabled = false; // Disable until the task is fully cancelled
+                return;
+            }
+
+            // User wants to start
             var deviceId = cmbDevices.SelectedItem as string;
-            if (string.IsNullOrEmpty(deviceId)) { Log("Select device."); return; }
-            await _gameMgr.EnsureGameAndDetectAsync(deviceId, _ocrSvc.Recognize, Log);
+            if (string.IsNullOrEmpty(deviceId))
+            {
+                Log("Please select a device first.");
+                return;
+            }
+
+            _isAutoRunning = true;
+            btnStart.Text = "Stop";
+            _cancellationTokenSource = new CancellationTokenSource();
+
+            try
+            {
+                Log("Starting auto service...");
+                await _ludusAutoService.RunAsync(deviceId, _ocrSvc.Recognize, Log, _cancellationTokenSource.Token);
+                Log("Auto service finished gracefully.");
+            }
+            catch (OperationCanceledException)
+            {
+                Log("Auto service was stopped by the user.");
+            }
+            catch (Exception ex)
+            {
+                Log($"An error occurred: {ex.Message}");
+            }
+            finally
+            {
+                _isAutoRunning = false;
+                btnStart.Text = "Start";
+                btnStart.Enabled = true;
+                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource = null;
+            }
         }
 
         private void BtnScreenDetect_Click(object sender, EventArgs e) {
@@ -90,7 +138,7 @@ namespace LUDUS {
             }
             // Gọi DetectScreen và log kết quả
             string screen = _screenSvc.DetectScreen(dev, Log);
-
+            Log($"Detected screen: {screen}");
         }
 
         private void LoadDevices() {
@@ -129,8 +177,8 @@ namespace LUDUS {
         private void BtnAnalyzeBattle_Click(object sender, EventArgs e) {
             var dev = cmbDevices.SelectedItem as string;
             if (string.IsNullOrEmpty(dev)) { Log("Select device."); return; }
-            _battleSvc.AnalyzeBattle(dev, Log);
-
+            Log("The 'Analyze Battle' button is for legacy testing and is now disabled.");
+            // The old _battleSvc.AnalyzeBattle method was removed.
         }
 
         private void Log(string msg) {

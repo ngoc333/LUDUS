@@ -29,10 +29,10 @@
             this.btnCapture = new System.Windows.Forms.Button();
             this.btnAnalyzeBattle = new System.Windows.Forms.Button();
             this.btnScreenDetect = new System.Windows.Forms.Button();
+            this.btnStart = new System.Windows.Forms.Button();
             this.richTextBoxLog = new System.Windows.Forms.RichTextBox();
             this.panel1 = new System.Windows.Forms.Panel();
             this.cmbDevices = new System.Windows.Forms.ComboBox();
-            this.btnStart = new System.Windows.Forms.Button();
             this.flowLayoutPanel1.SuspendLayout();
             this.panel1.SuspendLayout();
             this.SuspendLayout();
@@ -48,7 +48,7 @@
             this.flowLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Top;
             this.flowLayoutPanel1.Location = new System.Drawing.Point(0, 0);
             this.flowLayoutPanel1.Name = "flowLayoutPanel1";
-            this.flowLayoutPanel1.Size = new System.Drawing.Size(825, 51);
+            this.flowLayoutPanel1.Size = new System.Drawing.Size(576, 51);
             this.flowLayoutPanel1.TabIndex = 0;
             // 
             // btnOpenApp
@@ -96,6 +96,15 @@
             this.btnScreenDetect.Text = "Screen Detect";
             this.btnScreenDetect.UseVisualStyleBackColor = true;
             // 
+            // btnStart
+            // 
+            this.btnStart.Location = new System.Drawing.Point(436, 3);
+            this.btnStart.Name = "btnStart";
+            this.btnStart.Size = new System.Drawing.Size(75, 23);
+            this.btnStart.TabIndex = 9;
+            this.btnStart.Text = "Start";
+            this.btnStart.UseVisualStyleBackColor = true;
+            // 
             // richTextBoxLog
             // 
             this.richTextBoxLog.Dock = System.Windows.Forms.DockStyle.Left;
@@ -111,32 +120,23 @@
             this.panel1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panel1.Location = new System.Drawing.Point(446, 51);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(379, 437);
+            this.panel1.Size = new System.Drawing.Size(130, 437);
             this.panel1.TabIndex = 5;
             // 
             // cmbDevices
             // 
             this.cmbDevices.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cmbDevices.FormattingEnabled = true;
-            this.cmbDevices.Location = new System.Drawing.Point(210, 21);
+            this.cmbDevices.Location = new System.Drawing.Point(3, 6);
             this.cmbDevices.Name = "cmbDevices";
             this.cmbDevices.Size = new System.Drawing.Size(121, 21);
             this.cmbDevices.TabIndex = 11;
-            // 
-            // btnStart
-            // 
-            this.btnStart.Location = new System.Drawing.Point(436, 3);
-            this.btnStart.Name = "btnStart";
-            this.btnStart.Size = new System.Drawing.Size(75, 23);
-            this.btnStart.TabIndex = 9;
-            this.btnStart.Text = "Start";
-            this.btnStart.UseVisualStyleBackColor = true;
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(825, 488);
+            this.ClientSize = new System.Drawing.Size(576, 488);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.richTextBoxLog);
             this.Controls.Add(this.flowLayoutPanel1);

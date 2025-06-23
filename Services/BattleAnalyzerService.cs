@@ -22,10 +22,11 @@ namespace LUDUS.Services {
         private readonly ScreenCaptureService _capture;
         private readonly AdbService _adb;
         private readonly HeroNameOcrService _ocr;
-        private readonly string _regionsXmlPath;
         private readonly string _templateBasePath;
         private readonly HeroMergeService _mergeService;
         private readonly ScreenDetectionService _screenDetectSvc;
+        private readonly List<RegionInfo> _regions;
+        private const int GridCols = 5;
 
         public BattleAnalyzerService(
             ScreenCaptureService captureService,
@@ -39,175 +40,158 @@ namespace LUDUS.Services {
             _adb = adbService;
             _ocr = ocrService;
             _mergeService = mergeService;
-            _regionsXmlPath = regionsXmlPath;
             _templateBasePath = templateBasePath;
             _screenDetectSvc = screenDetectSvc;
+            _regions = RegionLoader.LoadPresetRegions(regionsXmlPath);
         }
 
-        /// <summary>
-        /// Analyze each battle cell in a 4x5 grid, then merge similar heroes.
-        /// </summary>
-        public async Task AnalyzeBattle(string deviceId, Action<string> log) {
-            var regions = RegionLoader.LoadPresetRegions(_regionsXmlPath);
-            int round = 1;
-            bool inBattle = true;
-            while (inBattle) {
-                log?.Invoke($"=== ROUND {round} ===");
-                // 1. Nếu round 1 thì click spell
-                if (round == 1) {
-                    await ClickRegion("SpellsClick", regions, deviceId, log);
-                    await Task.Delay(300);
-                    await ClickRegion("Spell1", regions, deviceId, log);
-                    await Task.Delay(300);
-                    await ClickRegion("CastClick", regions, deviceId, log);
-                    log?.Invoke("Đã click spell round 1");
-                    await Task.Delay(5000);
-                    // Click EmptyCoin 20 lần
-                    for (int i = 0; i < 20; i++) {
-                        await ClickRegion("EmptyCoin", regions, deviceId, log);
-                        await Task.Delay(150);
-                    }
-                }
+        public async Task ClickSpell(string deviceId, int round, Action<string> log)
+        {
+            if (round < 1 || round > 5)
+            {
+                log?.Invoke($"No spell to use for round {round}.");
+                return;
+            }
 
-                // 2. Thời gian merge: 90s hoặc cho đến khi hết coin và hết khả năng merge
-                DateTime mergeStart = DateTime.Now;
-                bool canMerge = true;
-                bool lastCoin = false;
-                int lastHeroCount = -1;
-                while ((DateTime.Now - mergeStart).TotalSeconds < 90) {
-                    log?.Invoke($"[Round {round}] Đang merge...");
-                    var mergeResult = await AnalyzeAndMergeWithCount(deviceId, log, regions);
-                    int heroCount = mergeResult.heroCount;
-                    canMerge = mergeResult.merged;
-                    bool emptyCoin = IsEmptyCoin(deviceId, regions, log);
+            await ClickRegion("SpellsClick", deviceId, log);
+            await Task.Delay(300);
 
-                    if (emptyCoin && (!canMerge || heroCount == lastHeroCount)) {
-                        log?.Invoke($"[Round {round}] Hết coin và không còn merge được nữa, kết thúc merge!");
-                        break;
-                    } else if (!emptyCoin) {
-                        // Nếu còn coin, click 10 lần rồi merge tiếp
-                        for (int i = 0; i < 10; i++) {
-                            await ClickRegion("EmptyCoin", regions, deviceId, log);
-                            await Task.Delay(150);
-                        }
-                    }
-                    lastHeroCount = heroCount;
-                    await Task.Delay(1000);
-                }
+            string spellToClick = $"Spell{round}";
+            await ClickRegion(spellToClick, deviceId, log);
+            await Task.Delay(300);
 
-                // 3. Click Battle để kết thúc lượt
-                await ClickRegion("Battle", regions, deviceId, log);
-                log?.Invoke($"[Round {round}] Đã click Battle, chờ sang round mới...");
+            await ClickRegion("CastClick", deviceId, log);
+            log?.Invoke($"Used {spellToClick}.");
+            await Task.Delay(1000); // Wait for spell animation
+        }
 
-                // 4. Kiểm tra màn hình mỗi 3s cho đến khi sang round mới hoặc endbattle
-                while (true) {
-                    await Task.Delay(3000);
-                    string screen = DetectScreen(deviceId, log);
-                    if (screen == "ToBattle") {
-                        round++;
-                        break;
-                    } else if (screen == "EndBattle") {
-                        log?.Invoke("Đã kết thúc trận đấu!");
-                        inBattle = false;
-                        break;
-                    } else {
-                        log?.Invoke($"Đang chờ sang round mới, màn hình hiện tại: {screen}");
-                    }
-                }
+        public async Task ClickCoin(string deviceId, int count, Action<string> log)
+        {
+            log?.Invoke($"Clicking Coin {count} times.");
+            for (int i = 0; i < count; i++)
+            {
+                await ClickRegion("Coin", deviceId, log, false); // Don't log every single click
+                await Task.Delay(150);
             }
         }
 
-        private async Task ClickRegion(string regionName, List<RegionInfo> regions, string deviceId, Action<string> log) {
-            var reg = regions.FirstOrDefault(r => r.Group == "MySideCell" && r.Name == regionName);
+        public async Task<bool> IsInBattleScreen(string deviceId, Action<string> log)
+        {
+            string screen = _screenDetectSvc.DetectScreen(deviceId, log);
+            // In the new logic, "ToBattle" is named "Battle"
+            return screen == "Battle" || screen == "ToBattle";
+        }
+
+        public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log)
+        {
+            log?.Invoke("Analyzing board for merging...");
+            var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log);
+            log?.Invoke(merged ? "Merge was successful." : "No merge occurred.");
+            return merged;
+        }
+
+        public async Task ClickEndRound(string deviceId, Action<string> log)
+        {
+            // The button to end the round is named "Battle" in regions.xml
+            await ClickRegion("Battle", deviceId, log);
+            log?.Invoke("End Round (Battle button).");
+        }
+
+        private async Task ClickRegion(string regionName, string deviceId, Action<string> log, bool verbose = true) {
+            // Ưu tiên tìm region theo group MySideCell trước, nếu không có thì lấy theo tên
+            var reg = _regions.FirstOrDefault(r => r.Group == "MySideCell" && r.Name == regionName)
+                    ?? _regions.FirstOrDefault(r => r.Name == regionName);
             if (reg == null) {
-                log?.Invoke($"Không tìm thấy region {regionName}");
+                log?.Invoke($"Region '{regionName}' not found.");
                 return;
             }
             int x = reg.Rect.X + reg.Rect.Width / 2;
             int y = reg.Rect.Y + reg.Rect.Height / 2;
             _adb.Run($"-s {deviceId} shell input tap {x} {y}");
-            log?.Invoke($"Đã click {regionName} tại ({x},{y})");
+            if (verbose)
+            {
+                log?.Invoke($"Clicked {regionName} at ({x},{y})");
+            }
             await Task.CompletedTask;
         }
 
-        private async Task<(bool merged, int heroCount)> AnalyzeAndMergeWithCount(string deviceId, Action<string> log, List<RegionInfo> regions) {
-            var baseCell = regions.First(r => r.Group == "MySideCell" && r.Name == "C1").Rect;
-            const int rows = 4, cols = 5;
+        private async Task<(bool merged, int heroCount)> AnalyzeAndMergeWithCount(string deviceId, Action<string> log) {
+            var baseCell = _regions.First(r => r.Group == "MySideCell" && r.Name == "C1").Rect;
+            const int rows = 4;
             var cellRects = new List<Rectangle>();
             for (int r = 0; r < rows; r++)
-                for (int c = 0; c < cols; c++)
+                for (int c = 0; c < GridCols; c++)
                     cellRects.Add(new Rectangle(baseCell.X + c * baseCell.Width,
                                                baseCell.Y + r * baseCell.Height,
                                                baseCell.Width,
                                                baseCell.Height));
-            var heroInfo = regions.Where(r => r.Group == "HeroInfo").ToList();
+            var heroInfo = _regions.Where(r => r.Group == "HeroInfo").ToList();
             var rectCheck = heroInfo.First(r => r.Name == "HeroCheck").Rect;
             var rectName = heroInfo.First(r => r.Name == "Name").Rect;
             var rectLv = heroInfo.First(r => r.Name == "LV").Rect;
-            Bitmap screenshot = _capture.Capture(deviceId) as Bitmap;
-            var results = new List<CellResult>();
-            try {
-                for (int i = 0; i < cellRects.Count; i++) {
-                    var rect = cellRects[i];
-                    using (var bmpCell = screenshot.Clone(rect, screenshot.PixelFormat)) {
-                        if (IsEmptyCell(bmpCell)) continue;
-                    }
-                    var px = rect.X + rect.Width / 2;
-                    var py = rect.Y + rect.Height / 2;
-                    _adb.Run($"-s {deviceId} shell input tap {px} {py}");
-                    await Task.Delay(100);
-                    screenshot.Dispose();
-                    screenshot = _capture.Capture(deviceId) as Bitmap;
-                    using (var bmpCheck = screenshot.Clone(rectCheck, screenshot.PixelFormat))
-                    using (var tpl = new Bitmap(Path.Combine(_templateBasePath, "Battle", "HeroCheck.png"))) {
-                        if (!ImageCompare.AreSame(bmpCheck, tpl)) continue;
-                    }
-                    string name;
-                    using (var bmpName = screenshot.Clone(rectName, screenshot.PixelFormat)) {
-                        var folder = Path.Combine(_templateBasePath, "Battle", "HeroName");
-                        name = TryMatchTemplate(bmpName, folder);
-                        if (string.IsNullOrEmpty(name)) {
-                            name = _ocr.Recognize(bmpName)?.Trim();
-                            if (!string.IsNullOrEmpty(name))
-                                bmpName.Save(Path.Combine(folder, name + ".png"));
+            
+            using(Bitmap screenshot = _capture.Capture(deviceId) as Bitmap)
+            {
+                var results = new List<CellResult>();
+                try {
+                    for (int i = 0; i < cellRects.Count; i++) {
+                        var rect = cellRects[i];
+                        using (var bmpCell = screenshot.Clone(rect, screenshot.PixelFormat)) {
+                            if (IsEmptyCell(bmpCell)) continue;
+                        }
+                        var px = rect.X + rect.Width / 2;
+                        var py = rect.Y + rect.Height / 2;
+                        _adb.Run($"-s {deviceId} shell input tap {px} {py}");
+                        await Task.Delay(100);
+                        
+                        using (var newScreenshot = _capture.Capture(deviceId) as Bitmap)
+                        {
+                            using (var bmpCheck = newScreenshot.Clone(rectCheck, newScreenshot.PixelFormat))
+                            using (var tpl = new Bitmap(Path.Combine(_templateBasePath, "Battle", "HeroCheck.png"))) {
+                                if (!ImageCompare.AreSame(bmpCheck, tpl)) continue;
+                            }
+                            string name;
+                            using (var bmpName = newScreenshot.Clone(rectName, newScreenshot.PixelFormat)) {
+                                var folder = Path.Combine(_templateBasePath, "Battle", "HeroName");
+                                name = TryMatchTemplate(bmpName, folder);
+                                if (string.IsNullOrEmpty(name)) {
+                                    name = _ocr.Recognize(bmpName)?.Trim();
+                                    if (!string.IsNullOrEmpty(name) && !File.Exists(Path.Combine(folder, name + ".png")))
+                                        bmpName.Save(Path.Combine(folder, name + ".png"));
+                                }
+                            }
+                            string lv;
+                            using (var bmpLv = newScreenshot.Clone(rectLv, newScreenshot.PixelFormat)) {
+                                var folderLv = Path.Combine(_templateBasePath, "Battle", "LV");
+                                lv = TryMatchTemplate(bmpLv, folderLv);
+                            }
+                            results.Add(new CellResult { Index = i, HeroName = name, Level = lv, CellRect = rect });
                         }
                     }
-                    string lv;
-                    using (var bmpLv = screenshot.Clone(rectLv, screenshot.PixelFormat)) {
-                        var folderLv = Path.Combine(_templateBasePath, "Battle", "LV");
-                        lv = TryMatchTemplate(bmpLv, folderLv);
-                    }
-                    results.Add(new CellResult { Index = i, HeroName = name, Level = lv, CellRect = rect });
+                } finally {
+                    // No need to dispose screenshot here due to the outer using block
                 }
-            } finally {
-                screenshot.Dispose();
+                
+                if (results.Count < 2)
+                {
+                    return (false, results.Count);
+                }
+
+                bool didMerge = _mergeService.MergeHeroes(deviceId, results, GridCols, log);
+                return (didMerge, results.Count);
             }
-            int beforeMerge = results.Count;
-            _mergeService.MergeHeroes(deviceId, results, cols, log);
-            // Nếu số lượng hero sau merge giảm thì có merge được
-            return (beforeMerge > 0, beforeMerge);
         }
 
-        private bool IsEmptyCoin(string deviceId, List<RegionInfo> regions, Action<string> log) {
-            var reg = regions.FirstOrDefault(r => r.Group == "MySideCell" && r.Name == "EmptyCoin");
+        private bool IsEmptyCoin(string deviceId, Action<string> log) {
+            var reg = _regions.FirstOrDefault(r => r.Name == "EmptyCoin");
             if (reg == null) return false;
             using (var bmp = _capture.Capture(deviceId) as Bitmap)
             using (var crop = bmp.Clone(reg.Rect, bmp.PixelFormat))
             using (var tpl = new Bitmap(Path.Combine(_templateBasePath, "Battle", "EmptyCoin.png"))) {
                 bool same = ImageCompare.AreSame(crop, tpl);
-                log?.Invoke($"So sánh EmptyCoin: {(same ? "Hết coin" : "Còn coin")}");
+                log?.Invoke($"Is Coin Empty? {(same ? "Yes" : "No")}");
                 return same;
             }
-        }
-
-        private string DetectScreen(string deviceId, Action<string> log) {
-            return _screenDetectSvc.DetectScreen(deviceId, log);
-        }
-
-        private string GetPosition(int index, int cols) {
-            int row = index / cols;
-            int col = index % cols;
-            return $"{row}_{col}";
         }
 
         private bool IsEmptyCell(Bitmap bmp) {
