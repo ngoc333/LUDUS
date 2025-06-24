@@ -85,7 +85,7 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="ScreenDetectionService.cs" />
+    <Compile Include="Services\ScreenDetectionService.cs" />
     <Compile Include="Services\AdbService.cs" />
     <Compile Include="Services\AppController.cs" />
     <Compile Include="Services\BattleAnalyzerService.cs" />

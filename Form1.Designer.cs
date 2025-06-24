@@ -1,4 +1,4 @@
-﻿namespace LUDUS {
+namespace LUDUS {
     partial class Form1 {
         /// <summary>
         /// Required designer variable.

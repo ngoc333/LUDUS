@@ -97,6 +97,20 @@ namespace LUDUS.Services {
             log?.Invoke("End Round (Battle button).");
         }
 
+        public async Task ClickClamContinue(string deviceId, Action<string> log) {
+            // The button to end the round is named "Battle" in regions.xml
+            await ClickRegion("ClamContinue", deviceId, log);
+            log?.Invoke("Clam Continue");
+        }
+
+        public async Task ClickCombatBoosts(string deviceId, Action<string> log) {
+            // The button to end the round is named "Battle" in regions.xml
+            await ClickRegion("CombatBoostsClick", deviceId, log);
+            await Task.Delay(300);
+            await ClickRegion("CombatBoostsClick2", deviceId, log);
+            log?.Invoke("Click Combat Boosts");
+        }
+
         private async Task ClickRegion(string regionName, string deviceId, Action<string> log, bool verbose = true) {
             // Ưu tiên tìm region theo group MySideCell trước, nếu không có thì lấy theo tên
             var reg = _regions.FirstOrDefault(r => r.Group == "MySideCell" && r.Name == regionName)

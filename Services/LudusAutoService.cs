@@ -107,6 +107,17 @@ namespace LUDUS.Logic
                         await Task.Delay(3000, cancellationToken);
                         break;
 
+                    case "ValorChest":
+                        await _battleSvc.ClickClamContinue(deviceId, log);
+                        _round = 1;
+                        await Task.Delay(3000, cancellationToken);
+                        break;
+                    case "CombatBoosts":
+                        await _battleSvc.ClickCombatBoosts(deviceId, log);
+                        _round = 1;
+                        await Task.Delay(3000, cancellationToken);
+                        break;
+
                     case "WaitPvp":
                     case "PVP":
                         _lastDefaultScreenTime = DateTime.MinValue;
