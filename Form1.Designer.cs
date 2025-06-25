@@ -49,7 +49,7 @@ namespace LUDUS {
             this.flowLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Top;
             this.flowLayoutPanel1.Location = new System.Drawing.Point(0, 0);
             this.flowLayoutPanel1.Name = "flowLayoutPanel1";
-            this.flowLayoutPanel1.Size = new System.Drawing.Size(826, 51);
+            this.flowLayoutPanel1.Size = new System.Drawing.Size(906, 51);
             this.flowLayoutPanel1.TabIndex = 0;
             // 
             // btnOpenApp
@@ -93,7 +93,7 @@ namespace LUDUS {
             this.richTextBoxLog.Dock = System.Windows.Forms.DockStyle.Left;
             this.richTextBoxLog.Location = new System.Drawing.Point(0, 51);
             this.richTextBoxLog.Name = "richTextBoxLog";
-            this.richTextBoxLog.Size = new System.Drawing.Size(446, 437);
+            this.richTextBoxLog.Size = new System.Drawing.Size(488, 445);
             this.richTextBoxLog.TabIndex = 4;
             this.richTextBoxLog.Text = "";
             // 
@@ -101,9 +101,9 @@ namespace LUDUS {
             // 
             this.panel1.Controls.Add(this.flowLayoutPanel2);
             this.panel1.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.panel1.Location = new System.Drawing.Point(446, 51);
+            this.panel1.Location = new System.Drawing.Point(488, 51);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(130, 437);
+            this.panel1.Size = new System.Drawing.Size(163, 445);
             this.panel1.TabIndex = 5;
             // 
             // flowLayoutPanel2
@@ -114,17 +114,17 @@ namespace LUDUS {
             this.flowLayoutPanel2.Dock = System.Windows.Forms.DockStyle.Fill;
             this.flowLayoutPanel2.Location = new System.Drawing.Point(0, 0);
             this.flowLayoutPanel2.Name = "flowLayoutPanel2";
-            this.flowLayoutPanel2.Size = new System.Drawing.Size(130, 437);
+            this.flowLayoutPanel2.Size = new System.Drawing.Size(163, 445);
             this.flowLayoutPanel2.TabIndex = 0;
             // 
             // lblWin
             // 
             this.lblWin.AutoSize = true;
-            this.lblWin.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblWin.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblWin.Location = new System.Drawing.Point(3, 3);
             this.lblWin.Margin = new System.Windows.Forms.Padding(3);
             this.lblWin.Name = "lblWin";
-            this.lblWin.Size = new System.Drawing.Size(79, 20);
+            this.lblWin.Size = new System.Drawing.Size(55, 15);
             this.lblWin.TabIndex = 12;
             this.lblWin.Text = "Thắng: 0";
             this.lblWin.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
@@ -132,11 +132,11 @@ namespace LUDUS {
             // lblLose
             // 
             this.lblLose.AutoSize = true;
-            this.lblLose.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.lblLose.Location = new System.Drawing.Point(3, 29);
+            this.lblLose.Font = new System.Drawing.Font("Microsoft Sans Serif", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblLose.Location = new System.Drawing.Point(64, 3);
             this.lblLose.Margin = new System.Windows.Forms.Padding(3);
             this.lblLose.Name = "lblLose";
-            this.lblLose.Size = new System.Drawing.Size(69, 20);
+            this.lblLose.Size = new System.Drawing.Size(48, 15);
             this.lblLose.TabIndex = 13;
             this.lblLose.Text = "Thua: 0";
             // 
@@ -144,17 +144,17 @@ namespace LUDUS {
             // 
             this.cmbDevices.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cmbDevices.FormattingEnabled = true;
-            this.cmbDevices.Location = new System.Drawing.Point(3, 55);
+            this.cmbDevices.Location = new System.Drawing.Point(3, 24);
             this.cmbDevices.Name = "cmbDevices";
-            this.cmbDevices.Size = new System.Drawing.Size(121, 21);
+            this.cmbDevices.Size = new System.Drawing.Size(154, 21);
             this.cmbDevices.TabIndex = 11;
             // 
             // richTextBoxResult
             // 
             this.richTextBoxResult.Dock = System.Windows.Forms.DockStyle.Right;
-            this.richTextBoxResult.Location = new System.Drawing.Point(576, 51);
+            this.richTextBoxResult.Location = new System.Drawing.Point(651, 51);
             this.richTextBoxResult.Name = "richTextBoxResult";
-            this.richTextBoxResult.Size = new System.Drawing.Size(250, 437);
+            this.richTextBoxResult.Size = new System.Drawing.Size(255, 445);
             this.richTextBoxResult.TabIndex = 14;
             this.richTextBoxResult.Text = "";
             // 
@@ -162,7 +162,7 @@ namespace LUDUS {
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(826, 488);
+            this.ClientSize = new System.Drawing.Size(906, 496);
             this.Controls.Add(this.panel1);
             this.Controls.Add(this.richTextBoxResult);
             this.Controls.Add(this.richTextBoxLog);

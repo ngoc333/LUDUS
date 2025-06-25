@@ -22,7 +22,8 @@ namespace LUDUS.Logic
         private DateTime _battleStartTime;
         private DateTime _battleEndTime;
         private Action<string> _resultLogger;
-        private bool _shouldSurrenderNext = true;
+        private bool _shouldSurrenderNext = false;
+        private bool _enableRoundDetection = true; // Bật/tắt chức năng tính round từ lifeEmpty
 
         public LudusAutoService(
             AdbService adb,
@@ -43,6 +44,24 @@ namespace LUDUS.Logic
         public void SetResultLogger(Action<string> resultLogger)
         {
             _resultLogger = resultLogger;
+        }
+
+        /// <summary>
+        /// Bật/tắt chức năng tính round từ lifeEmpty
+        /// </summary>
+        /// <param name="enable">True để bật, False để tắt</param>
+        public void EnableRoundDetection(bool enable)
+        {
+            _enableRoundDetection = enable;
+        }
+
+        /// <summary>
+        /// Lấy trạng thái chức năng tính round
+        /// </summary>
+        /// <returns>True nếu đang bật</returns>
+        public bool IsRoundDetectionEnabled()
+        {
+            return _enableRoundDetection;
         }
 
         public async Task RunAsync(string deviceId, Func<Bitmap, string> ocrFunc, Action<string> log, CancellationToken cancellationToken)
@@ -95,15 +114,46 @@ namespace LUDUS.Logic
                             await Task.Delay(2000, cancellationToken);
                             break;
                         }
-                        if (_round == 1) {
+                        
+                        // Tính round từ lifeEmpty
+                        int calculatedRound = _round; // Mặc định sử dụng _round nếu không bật detection
+                        RoundInfo roundInfo = null;
+                        
+                        if (_enableRoundDetection)
+                        {
+                            roundInfo = await GetRoundInfoAndLog(deviceId, log);
+                            calculatedRound = roundInfo.CalculatedRound;
+                            
+                            // Cập nhật _round nếu khác
+                            if (calculatedRound != _round)
+                            {
+                                log($"🔄 Cập nhật round từ {_round} thành {calculatedRound} (Life1: {roundInfo.Life1EmptyCount}, Life2: {roundInfo.Life2EmptyCount})");
+                                _round = calculatedRound;
+                            }
+                            else
+                            {
+                                log($"✅ Round {_round} khớp với thực tế (Life1: {roundInfo.Life1EmptyCount}, Life2: {roundInfo.Life2EmptyCount})");
+                            }
+                        }
+                        else
+                        {
+                            log($"🔧 Chức năng tính round từ lifeEmpty đã tắt, sử dụng _round = {_round}");
+                        }
+                        
+                        if (calculatedRound == 1) {
                             _battleStartTime = DateTime.Now; // Reset thời gian bắt đầu khi vào round 1
                             log($"Bắt đầu trận mới lúc: {_battleStartTime:HH:mm:ss}");
                         }
                         _lastDefaultScreenTime = DateTime.MinValue;
-                        log($">>> ROUND {_round} <<<");
-                        await _battleSvc.ClickSpell(deviceId, _round, log);
+                        
+                        string roundStatus = _enableRoundDetection 
+                            ? $"ROUND {calculatedRound} (Tính từ lifeEmpty: {roundInfo?.TotalEmptyCount ?? 0})"
+                            : $"ROUND {_round}";
+                        log($">>> {roundStatus} <<<");
+                        
+                        await _battleSvc.ClickSpell(deviceId, calculatedRound, log);
 
-                        if (_round == 1)
+                        if (calculatedRound == 1)
                         {
                             await _battleSvc.ClickCoin(deviceId, 20, log);
                         }
@@ -120,7 +170,7 @@ namespace LUDUS.Logic
                             }
                         }
                         await _battleSvc.ClickEndRound(deviceId, log);
-                        _round++;
+                        _round = calculatedRound + 1; // Tăng round cho lần tiếp theo
                         await Task.Delay(3000, cancellationToken);
                         break;
 
@@ -240,6 +290,27 @@ namespace LUDUS.Logic
 
         public int WinCount => _winCount;
         public int LoseCount => _loseCount;
+
+        /// <summary>
+        /// Lấy thông tin round và log
+        /// </summary>
+        /// <param name="deviceId">ID của thiết bị</param>
+        /// <param name="log">Callback để log thông tin</param>
+        /// <returns>Thông tin về round</returns>
+        private async Task<RoundInfo> GetRoundInfoAndLog(string deviceId, Action<string> log)
+        {
+            try
+            {
+                var roundInfo = await _battleSvc.GetRoundInfo(deviceId, log);
+                log($"📊 Thông tin Round: {roundInfo}");
+                return roundInfo;
+            }
+            catch (Exception ex)
+            {
+                log($"❌ Lỗi khi lấy thông tin round: {ex.Message}");
+                return new RoundInfo { IsRound1 = false, Life1EmptyCount = 0, Life2EmptyCount = 0, CalculatedRound = 1 };
+            }
+        }
 
         private void SaveResultLogToFile(string logLine)
         {

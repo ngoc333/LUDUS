@@ -25,6 +25,7 @@ namespace LUDUS.Services {
         private readonly string _templateBasePath;
         private readonly HeroMergeService _mergeService;
         private readonly ScreenDetectionService _screenDetectSvc;
+        private readonly RoundDetectionService _roundDetectionSvc;
         private readonly List<RegionInfo> _regions;
         private const int GridCols = 5;
 
@@ -43,6 +44,7 @@ namespace LUDUS.Services {
             _templateBasePath = templateBasePath;
             _screenDetectSvc = screenDetectSvc;
             _regions = RegionLoader.LoadPresetRegions(regionsXmlPath);
+            _roundDetectionSvc = new RoundDetectionService(captureService, regionsXmlPath, templateBasePath);
         }
 
         public async Task ClickSpell(string deviceId, int round, Action<string> log)
@@ -105,9 +107,9 @@ namespace LUDUS.Services {
 
         public async Task ClickCombatBoosts(string deviceId, Action<string> log) {
             // The button to end the round is named "Battle" in regions.xml
-            await ClickRegion("CombatBoostsClick", deviceId, log);
-            await Task.Delay(300);
-            await ClickRegion("CombatBoostsClick2", deviceId, log);
+          //  await ClickRegion("CombatBoostsClick", deviceId, log);
+            await Task.Delay(500);
+           // await ClickRegion("CombatBoostsClick2", deviceId, log);
             //log?.Invoke("Click Combat Boosts");
         }
 
@@ -246,6 +248,49 @@ namespace LUDUS.Services {
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// Kiểm tra có phải round 1 hay không
+        /// </summary>
+        /// <param name="deviceId">ID của thiết bị</param>
+        /// <param name="log">Callback để log thông tin</param>
+        /// <returns>True nếu là round 1</returns>
+        public async Task<bool> IsRound1(string deviceId, Action<string> log)
+        {
+            return await _roundDetectionSvc.IsRound1(deviceId, log);
+        }
+
+        /// <summary>
+        /// Lấy thông tin chi tiết về round hiện tại
+        /// </summary>
+        /// <param name="deviceId">ID của thiết bị</param>
+        /// <param name="log">Callback để log thông tin</param>
+        /// <returns>Thông tin chi tiết về round</returns>
+        public async Task<RoundInfo> GetRoundInfo(string deviceId, Action<string> log)
+        {
+            return await _roundDetectionSvc.GetRoundInfo(deviceId, log);
+        }
+
+        /// <summary>
+        /// Lưu file hình của Life1 và Life2 để kiểm tra
+        /// </summary>
+        /// <param name="deviceId">ID của thiết bị</param>
+        /// <param name="log">Callback để log thông tin</param>
+        /// <returns>True nếu lưu thành công</returns>
+        public async Task<bool> SaveLifeRegions(string deviceId, Action<string> log)
+        {
+            return await _roundDetectionSvc.SaveLifeRegions(deviceId, log);
+        }
+
+        /// <summary>
+        /// Lưu template lifeEmpty.png để debug
+        /// </summary>
+        /// <param name="log">Callback để log thông tin</param>
+        /// <returns>True nếu lưu thành công</returns>
+        public async Task<bool> SaveTemplateForDebug(Action<string> log)
+        {
+            return await _roundDetectionSvc.SaveTemplateForDebug(log);
         }
     }
 }

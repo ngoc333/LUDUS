@@ -36,32 +36,24 @@ namespace LUDUS {
             string outFolder = Path.Combine(Application.StartupPath, "Screenshots", "HeroNames");
             string templatesFolder = Path.Combine(Application.StartupPath, "Templates");
 
-
             _pvpNav = new PvpNavigationService(
                 _adb, _capSvc, xmlPath, templatesFolder
             );
 
-            // sau _capSvc = new ScreenCaptureService();
             _screenSvc = new ScreenDetectionService(
-                _capSvc, _adb, xmlPath
-                , templatesFolder
+                _capSvc, _adb, xmlPath, templatesFolder
             );
-
-            
 
             _ocrSvc = new HeroNameOcrService();
             _battleSvc = new BattleAnalyzerService(
-                 _capSvc, _adb, _ocrSvc
-                 , _mergeService, xmlPath, templatesFolder, _screenSvc);
+                 _capSvc, _adb, _ocrSvc, _mergeService, xmlPath, templatesFolder, _screenSvc);
             
-            // Initialize the new auto service
             _ludusAutoService = new LudusAutoService(
                 _adb, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _packageName
             );
             _ludusAutoService.SetResultLogger(UpdateResultUI);
 
             // wiring
-            //btnConnect.Click += BtnConnect_Click;
             btnCapture.Click += (s, e) => {
                 var dev = cmbDevices.SelectedItem as string;
                 if (string.IsNullOrEmpty(dev)) { Log("Select device first."); return; }
@@ -78,6 +70,12 @@ namespace LUDUS {
             btnOpenApp.Click += BtnOpenApp_Click;
             btnCloseApp.Click += BtnCloseApp_Click;
             btnStart.Click += BtnStart_Click;
+            //btnCheckRound1.Click += BtnCheckRound1_Click;
+            //btnSaveLifeRegions.Click += BtnSaveLifeRegions_Click;
+            //btnDebugTemplate.Click += BtnDebugTemplate_Click;
+            //btnToggleRoundDetection.Click += BtnToggleRoundDetection_Click;
+
+
 
             // load devices
             LoadDevices();
@@ -180,6 +178,72 @@ namespace LUDUS {
             // The old _battleSvc.AnalyzeBattle method was removed.
         }
 
+        private async void BtnCheckRound1_Click(object sender, EventArgs e) {
+            var deviceId = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(deviceId)) {
+                Log("Vui lòng chọn thiết bị trước.");
+                return;
+            }
+
+            try {
+                Log("Đang kiểm tra round 1...");
+                bool isRound1 = await _battleSvc.IsRound1(deviceId, Log);
+                
+                if (isRound1) {
+                    Log("✅ Kết quả: Đây là ROUND 1");
+                } else {
+                    Log("❌ Kết quả: Không phải ROUND 1");
+                }
+
+                // Lấy thông tin chi tiết
+                var roundInfo = await _battleSvc.GetRoundInfo(deviceId, Log);
+                Log($"📊 Thông tin chi tiết: {roundInfo}");
+            }
+            catch (Exception ex) {
+                Log($"❌ Lỗi khi kiểm tra round 1: {ex.Message}");
+            }
+        }
+
+        private async void BtnSaveLifeRegions_Click(object sender, EventArgs e) {
+            var deviceId = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(deviceId)) {
+                Log("Vui lòng chọn thiết bị trước.");
+                return;
+            }
+
+            try {
+                Log("Đang lưu file hình Life1 và Life2...");
+                bool success = await _battleSvc.SaveLifeRegions(deviceId, Log);
+                
+                if (success) {
+                    Log("✅ Đã lưu thành công file hình Life1 và Life2");
+                    Log("📁 Kiểm tra thư mục LifeRegions trong thư mục chương trình");
+                } else {
+                    Log("❌ Lỗi khi lưu file hình");
+                }
+            }
+            catch (Exception ex) {
+                Log($"❌ Lỗi khi lưu file hình: {ex.Message}");
+            }
+        }
+
+        private async void BtnDebugTemplate_Click(object sender, EventArgs e) {
+            try {
+                Log("Đang debug template lifeEmpty.png...");
+                bool success = await _battleSvc.SaveTemplateForDebug(Log);
+                
+                if (success) {
+                    Log("✅ Đã lưu thành công template debug");
+                    Log("📁 Kiểm tra thư mục Debug trong thư mục chương trình");
+                } else {
+                    Log("❌ Lỗi khi debug template");
+                }
+            }
+            catch (Exception ex) {
+                Log($"❌ Lỗi khi debug template: {ex.Message}");
+            }
+        }
+
         private void Log(string msg) {
             if (richTextBoxLog.InvokeRequired) {
                 richTextBoxLog.Invoke(new Action(() =>
@@ -214,14 +278,5 @@ namespace LUDUS {
             }
         }
 
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            base.OnFormClosing(e);
-            // Đảm bảo log đã được lưu ra file (đã thực hiện trong LudusAutoService)
-        }
-
-        private void cmbDevices_SelectedIndexChanged(object sender, EventArgs e) {
-
-        }
     }
 }
