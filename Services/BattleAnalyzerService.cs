@@ -77,7 +77,7 @@ namespace LUDUS.Services {
 
         public async Task<bool> IsInBattleScreen(string deviceId, Action<string> log)
         {
-            string screen = _screenDetectSvc.DetectScreen(deviceId, log);
+            string screen =  _screenDetectSvc.DetectScreen(deviceId, log);
             // In the new logic, "ToBattle" is named "Battle"
             return screen == "Battle" || screen == "ToBattle";
         }
@@ -108,7 +108,15 @@ namespace LUDUS.Services {
             await ClickRegion("CombatBoostsClick", deviceId, log);
             await Task.Delay(300);
             await ClickRegion("CombatBoostsClick2", deviceId, log);
-            log?.Invoke("Click Combat Boosts");
+            //log?.Invoke("Click Combat Boosts");
+        }
+
+        public async Task ClickLoseAndYes(string deviceId, Action<string> log)
+        {
+            await ClickRegion("Lose", deviceId, log);
+            await Task.Delay(500);
+            await ClickRegion("Yes", deviceId, log);
+            await Task.Delay(500);
         }
 
         private async Task ClickRegion(string regionName, string deviceId, Action<string> log, bool verbose = true) {

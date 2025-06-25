@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Threading.Tasks;
 using LUDUS.Services;
 using System.Threading;
+using System.IO;
 
 namespace LUDUS.Logic
 {
@@ -16,6 +17,12 @@ namespace LUDUS.Logic
         private readonly string _packageName;
         private int _round = 1;
         private DateTime _lastDefaultScreenTime = DateTime.MinValue;
+        private int _winCount = 0;
+        private int _loseCount = 0;
+        private DateTime _battleStartTime;
+        private DateTime _battleEndTime;
+        private Action<string> _resultLogger;
+        private bool _shouldSurrenderNext = true;
 
         public LudusAutoService(
             AdbService adb,
@@ -31,6 +38,11 @@ namespace LUDUS.Logic
             _pvpNav = pvpNav;
             _battleSvc = battleAnalyzerService;
             _packageName = packageName;
+        }
+
+        public void SetResultLogger(Action<string> resultLogger)
+        {
+            _resultLogger = resultLogger;
         }
 
         public async Task RunAsync(string deviceId, Func<Bitmap, string> ocrFunc, Action<string> log, CancellationToken cancellationToken)
@@ -75,6 +87,18 @@ namespace LUDUS.Logic
 
                     case "ToBattle":
                     case "Battle":
+                        if (_shouldSurrenderNext)
+                        {
+                            log("Sẽ tự động bỏ cuộc trận này!");
+                            await _battleSvc.ClickLoseAndYes(deviceId, log);
+                            _battleStartTime = DateTime.Now; // Reset thời gian bắt đầu khi vào round 1
+                            await Task.Delay(2000, cancellationToken);
+                            break;
+                        }
+                        if (_round == 1) {
+                            _battleStartTime = DateTime.Now; // Reset thời gian bắt đầu khi vào round 1
+                            log($"Bắt đầu trận mới lúc: {_battleStartTime:HH:mm:ss}");
+                        }
                         _lastDefaultScreenTime = DateTime.MinValue;
                         log($">>> ROUND {_round} <<<");
                         await _battleSvc.ClickSpell(deviceId, _round, log);
@@ -103,6 +127,31 @@ namespace LUDUS.Logic
                     case "EndBattle":
                         _lastDefaultScreenTime = DateTime.MinValue;
                         log("Battle ended. Resetting round count.");
+                        _battleEndTime = DateTime.Now;
+                        if (_battleStartTime == DateTime.MinValue)
+                        {
+                            _round = 1;
+                            await Task.Delay(3000, cancellationToken);
+                            break;
+                        }
+                        bool isWin = _screenSvc.DetectVictoryResult(deviceId, log);
+                        if (isWin)
+                        {
+                            _winCount++;
+                            _shouldSurrenderNext = true;
+                        }
+                        else
+                        {
+                            _loseCount++;
+                            _shouldSurrenderNext = false;
+                        }
+                        string result = isWin ? "Thắng" : "Thua";
+                        TimeSpan duration = (_battleStartTime != DateTime.MinValue) ? (_battleEndTime - _battleStartTime) : TimeSpan.Zero;
+                        string durationStr = duration != TimeSpan.Zero ? $"{(int)duration.TotalMinutes} phút {duration.Seconds} giây" : "Không xác định";
+                        string timeLog = $"Kết quả: {result} | Bắt đầu: {_battleStartTime:HH:mm:ss} | Kết thúc: {_battleEndTime:HH:mm:ss} | Thời gian: {durationStr}";
+                        _resultLogger?.Invoke(timeLog);
+                        SaveResultLogToFile(timeLog);
+                        _battleStartTime = DateTime.MinValue;
                         _round = 1;
                         await Task.Delay(3000, cancellationToken);
                         break;
@@ -147,7 +196,7 @@ namespace LUDUS.Logic
                         }
                         else
                         {
-                             log($"Waiting on unhandled screen '{screen}'. Time elapsed: {(DateTime.UtcNow - _lastDefaultScreenTime).TotalSeconds:F0}s");
+                             log($"Waiting on unhandled screen '{screen}'. Time elapsed: {(DateTime.UtcNow - _lastDefaultScreenTime).TotalSeconds:F0}s"); 
                              await Task.Delay(3000, cancellationToken);
                         }
                         break;
@@ -187,6 +236,21 @@ namespace LUDUS.Logic
             _appCtrl.Close(deviceId, _packageName);
             Task.Delay(2000).Wait();
             _appCtrl.Open(deviceId, _packageName);
+        }
+
+        public int WinCount => _winCount;
+        public int LoseCount => _loseCount;
+
+        private void SaveResultLogToFile(string logLine)
+        {
+            try
+            {
+                string logDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Log");
+                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                string logFile = Path.Combine(logDir, $"result_{DateTime.Now:yyyyMMdd}.log");
+                File.AppendAllText(logFile, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {logLine}{Environment.NewLine}");
+            }
+            catch { }
         }
     }
 }

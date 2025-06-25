@@ -27,14 +27,17 @@ namespace LUDUS {
             this.btnOpenApp = new System.Windows.Forms.Button();
             this.btnCloseApp = new System.Windows.Forms.Button();
             this.btnCapture = new System.Windows.Forms.Button();
-            this.btnAnalyzeBattle = new System.Windows.Forms.Button();
-            this.btnScreenDetect = new System.Windows.Forms.Button();
             this.btnStart = new System.Windows.Forms.Button();
             this.richTextBoxLog = new System.Windows.Forms.RichTextBox();
             this.panel1 = new System.Windows.Forms.Panel();
+            this.flowLayoutPanel2 = new System.Windows.Forms.FlowLayoutPanel();
+            this.lblWin = new System.Windows.Forms.Label();
+            this.lblLose = new System.Windows.Forms.Label();
             this.cmbDevices = new System.Windows.Forms.ComboBox();
+            this.richTextBoxResult = new System.Windows.Forms.RichTextBox();
             this.flowLayoutPanel1.SuspendLayout();
             this.panel1.SuspendLayout();
+            this.flowLayoutPanel2.SuspendLayout();
             this.SuspendLayout();
             // 
             // flowLayoutPanel1
@@ -42,13 +45,11 @@ namespace LUDUS {
             this.flowLayoutPanel1.Controls.Add(this.btnOpenApp);
             this.flowLayoutPanel1.Controls.Add(this.btnCloseApp);
             this.flowLayoutPanel1.Controls.Add(this.btnCapture);
-            this.flowLayoutPanel1.Controls.Add(this.btnAnalyzeBattle);
-            this.flowLayoutPanel1.Controls.Add(this.btnScreenDetect);
             this.flowLayoutPanel1.Controls.Add(this.btnStart);
             this.flowLayoutPanel1.Dock = System.Windows.Forms.DockStyle.Top;
             this.flowLayoutPanel1.Location = new System.Drawing.Point(0, 0);
             this.flowLayoutPanel1.Name = "flowLayoutPanel1";
-            this.flowLayoutPanel1.Size = new System.Drawing.Size(576, 51);
+            this.flowLayoutPanel1.Size = new System.Drawing.Size(826, 51);
             this.flowLayoutPanel1.TabIndex = 0;
             // 
             // btnOpenApp
@@ -78,27 +79,9 @@ namespace LUDUS {
             this.btnCapture.Text = "Capture";
             this.btnCapture.UseVisualStyleBackColor = true;
             // 
-            // btnAnalyzeBattle
-            // 
-            this.btnAnalyzeBattle.Location = new System.Drawing.Point(246, 3);
-            this.btnAnalyzeBattle.Name = "btnAnalyzeBattle";
-            this.btnAnalyzeBattle.Size = new System.Drawing.Size(89, 23);
-            this.btnAnalyzeBattle.TabIndex = 5;
-            this.btnAnalyzeBattle.Text = "Analyze Battle";
-            this.btnAnalyzeBattle.UseVisualStyleBackColor = true;
-            // 
-            // btnScreenDetect
-            // 
-            this.btnScreenDetect.Location = new System.Drawing.Point(341, 3);
-            this.btnScreenDetect.Name = "btnScreenDetect";
-            this.btnScreenDetect.Size = new System.Drawing.Size(89, 23);
-            this.btnScreenDetect.TabIndex = 8;
-            this.btnScreenDetect.Text = "Screen Detect";
-            this.btnScreenDetect.UseVisualStyleBackColor = true;
-            // 
             // btnStart
             // 
-            this.btnStart.Location = new System.Drawing.Point(436, 3);
+            this.btnStart.Location = new System.Drawing.Point(246, 3);
             this.btnStart.Name = "btnStart";
             this.btnStart.Size = new System.Drawing.Size(75, 23);
             this.btnStart.TabIndex = 9;
@@ -116,34 +99,80 @@ namespace LUDUS {
             // 
             // panel1
             // 
-            this.panel1.Controls.Add(this.cmbDevices);
+            this.panel1.Controls.Add(this.flowLayoutPanel2);
             this.panel1.Dock = System.Windows.Forms.DockStyle.Fill;
             this.panel1.Location = new System.Drawing.Point(446, 51);
             this.panel1.Name = "panel1";
             this.panel1.Size = new System.Drawing.Size(130, 437);
             this.panel1.TabIndex = 5;
             // 
+            // flowLayoutPanel2
+            // 
+            this.flowLayoutPanel2.Controls.Add(this.lblWin);
+            this.flowLayoutPanel2.Controls.Add(this.lblLose);
+            this.flowLayoutPanel2.Controls.Add(this.cmbDevices);
+            this.flowLayoutPanel2.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.flowLayoutPanel2.Location = new System.Drawing.Point(0, 0);
+            this.flowLayoutPanel2.Name = "flowLayoutPanel2";
+            this.flowLayoutPanel2.Size = new System.Drawing.Size(130, 437);
+            this.flowLayoutPanel2.TabIndex = 0;
+            // 
+            // lblWin
+            // 
+            this.lblWin.AutoSize = true;
+            this.lblWin.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblWin.Location = new System.Drawing.Point(3, 3);
+            this.lblWin.Margin = new System.Windows.Forms.Padding(3);
+            this.lblWin.Name = "lblWin";
+            this.lblWin.Size = new System.Drawing.Size(79, 20);
+            this.lblWin.TabIndex = 12;
+            this.lblWin.Text = "Thắng: 0";
+            this.lblWin.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            // 
+            // lblLose
+            // 
+            this.lblLose.AutoSize = true;
+            this.lblLose.Font = new System.Drawing.Font("Microsoft Sans Serif", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblLose.Location = new System.Drawing.Point(3, 29);
+            this.lblLose.Margin = new System.Windows.Forms.Padding(3);
+            this.lblLose.Name = "lblLose";
+            this.lblLose.Size = new System.Drawing.Size(69, 20);
+            this.lblLose.TabIndex = 13;
+            this.lblLose.Text = "Thua: 0";
+            // 
             // cmbDevices
             // 
             this.cmbDevices.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cmbDevices.FormattingEnabled = true;
-            this.cmbDevices.Location = new System.Drawing.Point(3, 6);
+            this.cmbDevices.Location = new System.Drawing.Point(3, 55);
             this.cmbDevices.Name = "cmbDevices";
             this.cmbDevices.Size = new System.Drawing.Size(121, 21);
             this.cmbDevices.TabIndex = 11;
+            // 
+            // richTextBoxResult
+            // 
+            this.richTextBoxResult.Dock = System.Windows.Forms.DockStyle.Right;
+            this.richTextBoxResult.Location = new System.Drawing.Point(576, 51);
+            this.richTextBoxResult.Name = "richTextBoxResult";
+            this.richTextBoxResult.Size = new System.Drawing.Size(250, 437);
+            this.richTextBoxResult.TabIndex = 14;
+            this.richTextBoxResult.Text = "";
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(576, 488);
+            this.ClientSize = new System.Drawing.Size(826, 488);
             this.Controls.Add(this.panel1);
+            this.Controls.Add(this.richTextBoxResult);
             this.Controls.Add(this.richTextBoxLog);
             this.Controls.Add(this.flowLayoutPanel1);
             this.Name = "Form1";
             this.Text = "LUDUS Auto";
             this.flowLayoutPanel1.ResumeLayout(false);
             this.panel1.ResumeLayout(false);
+            this.flowLayoutPanel2.ResumeLayout(false);
+            this.flowLayoutPanel2.PerformLayout();
             this.ResumeLayout(false);
 
         }
@@ -154,11 +183,13 @@ namespace LUDUS {
         private System.Windows.Forms.Button btnCloseApp;
         private System.Windows.Forms.Button btnOpenApp;
         private System.Windows.Forms.Button btnCapture;
-        private System.Windows.Forms.Button btnAnalyzeBattle;
         private System.Windows.Forms.Panel panel1;
         private System.Windows.Forms.ComboBox cmbDevices;
-        private System.Windows.Forms.Button btnScreenDetect;
         private System.Windows.Forms.Button btnStart;
+        private System.Windows.Forms.Label lblWin;
+        private System.Windows.Forms.Label lblLose;
+        private System.Windows.Forms.RichTextBox richTextBoxResult;
+        private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel2;
     }
 }
 

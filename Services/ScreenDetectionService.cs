@@ -39,7 +39,7 @@ namespace LUDUS.Services {
                     // 1. Thử template screen
                     var regions = RegionLoader.LoadPresetRegions(_regionsXmlPath)
                                               .Where(r => r.Group == "ScreenRegions");
-                    bool found = false;
+                    //bool found = false;
                     foreach (var region in regions) {
                         string name = region.Name;
                         Rectangle rect = region.Rect;
@@ -120,6 +120,50 @@ namespace LUDUS.Services {
 
                     return !string.IsNullOrEmpty(ocrResult) &&
                            ocrResult.IndexOf("loading", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Kiểm tra kết quả trận đấu (thắng/thua) bằng cách so sánh với ảnh Victory.png
+        /// </summary>
+        /// <returns>true nếu thắng, false nếu thua</returns>
+        public bool DetectVictoryResult(string deviceId, Action<string> log)
+        {
+            using (var screenshot = _capture.Capture(deviceId) as Bitmap)
+            {
+                if (screenshot == null)
+                {
+                    log?.Invoke("Không thể chụp màn hình để kiểm tra kết quả trận đấu.");
+                    return false;
+                }
+                string tplPath = Path.Combine(_templateBasePath, "Battle", "Victory.png");
+                if (!File.Exists(tplPath))
+                {
+                    log?.Invoke($"Không tìm thấy file mẫu: {tplPath}");
+                    return false;
+                }
+                using (var mat0 = BitmapConverter.ToMat(screenshot))
+                using (var mat = new Mat())
+                using (var tplMat = Cv2.ImRead(tplPath, ImreadModes.Color))
+                using (var result = new Mat())
+                {
+                    Cv2.CvtColor(mat0, mat, ColorConversionCodes.BGRA2BGR);
+                    Cv2.MatchTemplate(mat, tplMat, result, TemplateMatchModes.CCoeffNormed);
+                    Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
+                    log?.Invoke($"So sánh Victory.png trên màn hình: score={maxVal:F2}");
+                    DetectButtonWithOpenCvAndTap(deviceId, screenshot, log);
+                    if (maxVal >= MatchThreshold)
+                    {
+                        log?.Invoke("Kết quả: Thắng (Victory)");
+                        return true;
+                    }
+                    else
+                    {
+                        log?.Invoke("Kết quả: Thua (Defeat)");
+                        return false;
+                    }
+                    
                 }
             }
         }

@@ -58,6 +58,7 @@ namespace LUDUS {
             _ludusAutoService = new LudusAutoService(
                 _adb, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _packageName
             );
+            _ludusAutoService.SetResultLogger(UpdateResultUI);
 
             // wiring
             //btnConnect.Click += BtnConnect_Click;
@@ -76,8 +77,6 @@ namespace LUDUS {
             };
             btnOpenApp.Click += BtnOpenApp_Click;
             btnCloseApp.Click += BtnCloseApp_Click;
-            btnAnalyzeBattle.Click += BtnAnalyzeBattle_Click;
-            btnScreenDetect.Click += BtnScreenDetect_Click;
             btnStart.Click += BtnStart_Click;
 
             // load devices
@@ -194,5 +193,35 @@ namespace LUDUS {
             richTextBoxLog.ScrollToCaret();
         }
 
+        private void UpdateResultUI(string resultLine)
+        {
+            if (richTextBoxResult.InvokeRequired)
+            {
+                richTextBoxResult.Invoke(new Action(() =>
+                {
+                    richTextBoxResult.AppendText($"{resultLine}{Environment.NewLine}");
+                    richTextBoxResult.ScrollToCaret();
+                    lblWin.Text = $"Thắng: {_ludusAutoService.WinCount}";
+                    lblLose.Text = $"Thua: {_ludusAutoService.LoseCount}";
+                }));
+            }
+            else
+            {
+                richTextBoxResult.AppendText($"{resultLine}{Environment.NewLine}");
+                richTextBoxResult.ScrollToCaret();
+                lblWin.Text = $"Thắng: {_ludusAutoService.WinCount}";
+                lblLose.Text = $"Thua: {_ludusAutoService.LoseCount}";
+            }
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            base.OnFormClosing(e);
+            // Đảm bảo log đã được lưu ra file (đã thực hiện trong LudusAutoService)
+        }
+
+        private void cmbDevices_SelectedIndexChanged(object sender, EventArgs e) {
+
+        }
     }
 }
