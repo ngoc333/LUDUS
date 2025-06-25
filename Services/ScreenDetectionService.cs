@@ -28,10 +28,8 @@ namespace LUDUS.Services {
 
         public string DetectScreen(string deviceId, Action<string> log) {
             for (int attempt = 1; attempt <= MaxRetries; attempt++) {
-                log?.Invoke($"DetectScreen attempt {attempt}/{MaxRetries}");
                 using (var screenshot = _capture.Capture(deviceId) as Bitmap) {
                     if (screenshot == null) {
-                        log?.Invoke($"Failed to capture screen (null), retrying {attempt}/{MaxRetries}...");
                         System.Threading.Thread.Sleep(1000);
                         continue;
                     }
@@ -39,7 +37,6 @@ namespace LUDUS.Services {
                     // 1. Thử template screen
                     var regions = RegionLoader.LoadPresetRegions(_regionsXmlPath)
                                               .Where(r => r.Group == "ScreenRegions");
-                    //bool found = false;
                     foreach (var region in regions) {
                         string name = region.Name;
                         Rectangle rect = region.Rect;
@@ -49,25 +46,22 @@ namespace LUDUS.Services {
                                 continue;
                             using (var tpl = new Bitmap(tplPath)) {
                                 if (ImageCompare.AreSame(crop, tpl)) {
-                                    log?.Invoke($"Screen detected: {name}");
                                     return name;
                                 }
                             }
                         }
                     }
-                    log?.Invoke("Screen detected: unknown via defined regions.");
 
                     // 2. Nếu chưa detect được, thử detect + tap button
                     string btn = DetectButtonWithOpenCvAndTap(deviceId, screenshot, log);
-                    if (string.IsNullOrEmpty(btn)) {
-                        log?.Invoke("No button tapped, will retry after delay.");
-                        System.Threading.Thread.Sleep(1000);
-                        continue;
+                    if (!string.IsNullOrEmpty(btn)) {
+                        return btn;
                     }
+                    
+                    System.Threading.Thread.Sleep(1000);
                 }
             }
-            log?.Invoke("DetectScreen failed after all attempts (capture screen null hoặc không nhận diện được).");
-            return null;
+            return "unknown";
         }
 
         // Detect and tap button via OpenCV
@@ -78,7 +72,6 @@ namespace LUDUS.Services {
 
                 string buttonFolder = Path.Combine(_templateBasePath, "Button");
                 if (!Directory.Exists(buttonFolder)) {
-                    log?.Invoke("Button templates folder not found.");
                     return null;
                 }
 
@@ -92,13 +85,12 @@ namespace LUDUS.Services {
                             int xTap = maxLoc.X + tplMat.Width / 2;
                             int yTap = maxLoc.Y + tplMat.Height / 2;
                             _adb.Run($"-s {deviceId} shell input tap {xTap} {yTap}");
-                            log?.Invoke($"Button detected and tapped (OpenCV): {btnName} (score={maxVal:F2}), at {xTap}_{yTap}");
+                            log?.Invoke($"Button: {btnName}");
                             System.Threading.Thread.Sleep(500);
                             return btnName;
                         }
                     }
                 }
-                log?.Invoke("No button template matched via OpenCV.");
                 return null;
             }
         }
@@ -116,7 +108,6 @@ namespace LUDUS.Services {
 
                 using (var crop = bmp.Clone(region.Rect, bmp.PixelFormat)) {
                     string ocrResult = ocrFunc(crop)?.Trim();
-                    log?.Invoke($"OCR result for Loading: \"{ocrResult}\"");
 
                     return !string.IsNullOrEmpty(ocrResult) &&
                            ocrResult.IndexOf("loading", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -134,13 +125,11 @@ namespace LUDUS.Services {
             {
                 if (screenshot == null)
                 {
-                    log?.Invoke("Không thể chụp màn hình để kiểm tra kết quả trận đấu.");
                     return false;
                 }
                 string tplPath = Path.Combine(_templateBasePath, "Battle", "Victory.png");
                 if (!File.Exists(tplPath))
                 {
-                    log?.Invoke($"Không tìm thấy file mẫu: {tplPath}");
                     return false;
                 }
                 using (var mat0 = BitmapConverter.ToMat(screenshot))
@@ -151,21 +140,63 @@ namespace LUDUS.Services {
                     Cv2.CvtColor(mat0, mat, ColorConversionCodes.BGRA2BGR);
                     Cv2.MatchTemplate(mat, tplMat, result, TemplateMatchModes.CCoeffNormed);
                     Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
-                    log?.Invoke($"So sánh Victory.png trên màn hình: score={maxVal:F2}");
                     DetectButtonWithOpenCvAndTap(deviceId, screenshot, log);
                     if (maxVal >= MatchThreshold)
                     {
-                        log?.Invoke("Kết quả: Thắng (Victory)");
+                        log?.Invoke("Victory");
                         return true;
                     }
                     else
                     {
-                        log?.Invoke("Kết quả: Thua (Defeat)");
+                        log?.Invoke("Defeat");
                         return false;
                     }
                     
                 }
             }
+        }
+
+        /// <summary>
+        /// Kiểm tra nhanh xem có đang ở màn hình CombatBoosts hay không
+        /// </summary>
+        /// <param name="deviceId">ID của thiết bị</param>
+        /// <param name="log">Callback để log thông tin</param>
+        /// <returns>True nếu đang ở màn hình CombatBoosts</returns>
+        public bool IsCombatBoostsScreen(string deviceId, Action<string> log)
+        {
+            try
+            {
+                using (var screenshot = _capture.Capture(deviceId) as Bitmap)
+                {
+                    if (screenshot == null) return false;
+
+                    var regions = RegionLoader.LoadPresetRegions(_regionsXmlPath)
+                                              .Where(r => r.Group == "ScreenRegions" && r.Name == "CombatBoosts");
+                    
+                    foreach (var region in regions)
+                    {
+                        using (var crop = screenshot.Clone(region.Rect, screenshot.PixelFormat))
+                        {
+                            string tplPath = Path.Combine(_templateBasePath, "Screen", "CombatBoosts.png");
+                            if (!File.Exists(tplPath)) continue;
+                            
+                            using (var tpl = new Bitmap(tplPath))
+                            {
+                                if (ImageCompare.AreSame(crop, tpl))
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"Lỗi khi kiểm tra CombatBoosts: {ex.Message}");
+            }
+            
+            return false;
         }
     }
 }

@@ -45,5 +45,35 @@ namespace LUDUS.Services {
                 return output;
             }
         }
+
+        /// <summary>
+        /// Lấy kích thước màn hình của thiết bị
+        /// </summary>
+        /// <param name="deviceId">ID của thiết bị</param>
+        /// <returns>Tuple (width, height) hoặc null nếu lỗi</returns>
+        public (int width, int height)? GetScreenSize(string deviceId)
+        {
+            try
+            {
+                string output = RunWithOutput($"-s {deviceId} shell wm size");
+                if (string.IsNullOrWhiteSpace(output)) return null;
+                
+                // Output format: "Physical size: 1080x1920"
+                var parts = output.Trim().Split(':');
+                if (parts.Length < 2) return null;
+                
+                var sizeParts = parts[1].Trim().Split('x');
+                if (sizeParts.Length != 2) return null;
+                
+                if (int.TryParse(sizeParts[0].Trim(), out int width) && 
+                    int.TryParse(sizeParts[1].Trim(), out int height))
+                {
+                    return (width, height);
+                }
+            }
+            catch { }
+            
+            return null;
+        }
     }
 }

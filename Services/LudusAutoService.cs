@@ -24,6 +24,8 @@ namespace LUDUS.Logic
         private Action<string> _resultLogger;
         private bool _shouldSurrenderNext = false;
         private bool _enableRoundDetection = true; // Bật/tắt chức năng tính round từ lifeEmpty
+        private int _restartCount = 0;
+        private const int MaxRestartPerSession = 2;
 
         public LudusAutoService(
             AdbService adb,
@@ -123,16 +125,17 @@ namespace LUDUS.Logic
                         {
                             roundInfo = await GetRoundInfoAndLog(deviceId, log);
                             calculatedRound = roundInfo.CalculatedRound;
-                            
+                            // Nếu đang vào giữa trận mà _battleStartTime chưa có, thì gán luôn để tránh lặp EndBattle
+                            if (_battleStartTime == DateTime.MinValue && calculatedRound != 1)
+                            {
+                                _battleStartTime = DateTime.Now;
+                                log($"Đồng bộ _battleStartTime khi vào giữa trận: {calculatedRound}");
+                            }
                             // Cập nhật _round nếu khác
                             if (calculatedRound != _round)
                             {
-                                log($"🔄 Cập nhật round từ {_round} thành {calculatedRound} (Life1: {roundInfo.Life1EmptyCount}, Life2: {roundInfo.Life2EmptyCount})");
+                                log($"🔄 Cập nhật round từ {_round} thành {calculatedRound}");
                                 _round = calculatedRound;
-                            }
-                            else
-                            {
-                                log($"✅ Round {_round} khớp với thực tế (Life1: {roundInfo.Life1EmptyCount}, Life2: {roundInfo.Life2EmptyCount})");
                             }
                         }
                         else
@@ -146,10 +149,7 @@ namespace LUDUS.Logic
                         }
                         _lastDefaultScreenTime = DateTime.MinValue;
                         
-                        string roundStatus = _enableRoundDetection 
-                            ? $"ROUND {calculatedRound} (Tính từ lifeEmpty: {roundInfo?.TotalEmptyCount ?? 0})"
-                            : $"ROUND {_round}";
-                        log($">>> {roundStatus} <<<");
+                        log($">>> ROUND {calculatedRound} <<<");
                         
                         await _battleSvc.ClickSpell(deviceId, calculatedRound, log);
 
@@ -165,7 +165,7 @@ namespace LUDUS.Logic
                                 bool merged = await _battleSvc.AnalyzeAndMerge(deviceId, log);
                                 if (!merged)
                                 {
-                                    log("No more merges possible.");
+                                    log("No merge");
                                 }
                             }
                         }
@@ -176,14 +176,14 @@ namespace LUDUS.Logic
 
                     case "EndBattle":
                         _lastDefaultScreenTime = DateTime.MinValue;
-                        log("Battle ended. Resetting round count.");
+                        //if (_battleStartTime == DateTime.MinValue)
+                        //{
+                        //    // Nếu chưa có thời gian bắt đầu trận, delay 6s và không log liên tục
+                        //    await Task.Delay(6000, cancellationToken);
+                        //    break;
+                        //}
+                        //log("Battle ended. Resetting round count.");
                         _battleEndTime = DateTime.Now;
-                        if (_battleStartTime == DateTime.MinValue)
-                        {
-                            _round = 1;
-                            await Task.Delay(3000, cancellationToken);
-                            break;
-                        }
                         bool isWin = _screenSvc.DetectVictoryResult(deviceId, log);
                         if (isWin)
                         {
@@ -212,9 +212,42 @@ namespace LUDUS.Logic
                         await Task.Delay(3000, cancellationToken);
                         break;
                     case "CombatBoosts":
-                        await _battleSvc.ClickCombatBoosts(deviceId, log);
-                        _round = 1;
-                        await Task.Delay(3000, cancellationToken);
+                        log("Phát hiện màn hình CombatBoosts - đang xử lý...");
+                        //await _battleSvc.SaveCombatBoostsScreenshot(deviceId, log);
+                        
+                        // Tăng timeout lên 30 giây
+                        bool combatBoostsHandled = false;
+                        int totalTimeout = 0;
+                        const int maxTotalTimeout = 30000; // 30 giây tối đa
+                        await Task.Delay(6000, cancellationToken);
+                        while (!combatBoostsHandled && totalTimeout < maxTotalTimeout)
+                        {
+                            await _battleSvc.ClickCombatBoosts(deviceId, log);
+                            await Task.Delay(3000, cancellationToken);
+                            
+                            // Kiểm tra xem đã thoát khỏi CombatBoosts chưa
+                            if (!_screenSvc.IsCombatBoostsScreen(deviceId, log))
+                            {
+                                combatBoostsHandled = true;
+                                log("✅ Đã thoát khỏi CombatBoosts thành công");
+                                break;
+                            }
+                            
+                            totalTimeout += 3000;
+                            log($"Vẫn ở CombatBoosts, đã xử lý {totalTimeout/1000}s/{maxTotalTimeout/1000}s");
+                        }
+                        
+                        if (!combatBoostsHandled)
+                        {
+                            log("🚨 Timeout xử lý CombatBoosts, restart app...");
+                            await _battleSvc.SaveCombatBoostsScreenshot(deviceId, log);
+                            await RestartAppSafe(deviceId, log, cancellationToken);
+                            break;
+                        }
+                        else
+                        {
+                            await Task.Delay(2000, cancellationToken);
+                        }
                         break;
 
                     case "WaitPvp":
@@ -226,9 +259,9 @@ namespace LUDUS.Logic
 
                     case "unknown":
                         log("Unknown screen detected. Restarting app.");
-                        RestartApp(deviceId, log);
-                        _round = 1; // Reset rounds
-                        _lastDefaultScreenTime = DateTime.MinValue; // Reset timer
+                        await RestartAppSafe(deviceId, log, cancellationToken);
+                        _round = 1;
+                        _lastDefaultScreenTime = DateTime.MinValue;
                         break;
 
                     default:
@@ -240,7 +273,7 @@ namespace LUDUS.Logic
                         else if ((DateTime.UtcNow - _lastDefaultScreenTime).TotalSeconds > 90)
                         {
                             log($"Stuck on an unhandled screen for >90s. Restarting app. Last screen: '{screen}'");
-                            RestartApp(deviceId, log);
+                            await RestartAppSafe(deviceId, log, cancellationToken);
                             _lastDefaultScreenTime = DateTime.MinValue;
                             _round = 1;
                         }
@@ -278,14 +311,25 @@ namespace LUDUS.Logic
                 waited += 3000;
             }
             log("Timeout while loading - restarting.");
-            RestartApp(deviceId, log);
+            await RestartAppSafe(deviceId, log, cancellationToken);
         }
         
-        private void RestartApp(string deviceId, Action<string> log)
+        private async Task RestartAppSafe(string deviceId, Action<string> log, CancellationToken cancellationToken)
         {
+            if (_restartCount >= MaxRestartPerSession)
+            {
+                log($"Đã restart app {_restartCount} lần liên tiếp, tạm dừng để tránh lặp vô hạn.");
+                await Task.Delay(20000, cancellationToken); // Chờ lâu hơn nếu lặp
+                _restartCount = 0;
+            }
+            _restartCount++;
             _appCtrl.Close(deviceId, _packageName);
-            Task.Delay(2000).Wait();
+            await Task.Delay(2000, cancellationToken);
             _appCtrl.Open(deviceId, _packageName);
+            log("Đang chờ app khởi động lại...");
+            await Task.Delay(15000, cancellationToken); // Chờ app load xong
+            _round = 1;
+            _lastDefaultScreenTime = DateTime.MinValue;
         }
 
         public int WinCount => _winCount;
@@ -302,7 +346,6 @@ namespace LUDUS.Logic
             try
             {
                 var roundInfo = await _battleSvc.GetRoundInfo(deviceId, log);
-                log($"📊 Thông tin Round: {roundInfo}");
                 return roundInfo;
             }
             catch (Exception ex)

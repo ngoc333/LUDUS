@@ -55,21 +55,21 @@ namespace LUDUS.Services {
                 return;
             }
 
-            await ClickRegion("SpellsClick", deviceId, log);
+            await ClickRegion("SpellsClick", deviceId, log, false);
             await Task.Delay(300);
 
             string spellToClick = $"Spell{round}";
-            await ClickRegion(spellToClick, deviceId, log);
+            await ClickRegion(spellToClick, deviceId, log, false);
             await Task.Delay(300);
 
-            await ClickRegion("CastClick", deviceId, log);
-            log?.Invoke($"Used {spellToClick}.");
+            await ClickRegion("CastClick", deviceId, log, false);
+            log?.Invoke($"Spell {round}");
             await Task.Delay(1000); // Wait for spell animation
         }
 
         public async Task ClickCoin(string deviceId, int count, Action<string> log)
         {
-            log?.Invoke($"Clicking Coin {count} times.");
+            log?.Invoke($"Coin x{count}");
             for (int i = 0; i < count; i++)
             {
                 await ClickRegion("Coin", deviceId, log, false); // Don't log every single click
@@ -86,31 +86,65 @@ namespace LUDUS.Services {
 
         public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log)
         {
-            log?.Invoke("Analyzing board for merging...");
             var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log);
-            log?.Invoke(merged ? "Merge was successful." : "No merge occurred.");
+            if (merged) log?.Invoke("Merge ✓");
             return merged;
         }
 
         public async Task ClickEndRound(string deviceId, Action<string> log)
         {
             // The button to end the round is named "Battle" in regions.xml
-            await ClickRegion("Battle", deviceId, log);
-            log?.Invoke("End Round (Battle button).");
+            await ClickRegion("ToBattle", deviceId, log);
         }
 
         public async Task ClickClamContinue(string deviceId, Action<string> log) {
             // The button to end the round is named "Battle" in regions.xml
             await ClickRegion("ClamContinue", deviceId, log);
-            log?.Invoke("Clam Continue");
         }
 
         public async Task ClickCombatBoosts(string deviceId, Action<string> log) {
-            // The button to end the round is named "Battle" in regions.xml
-          //  await ClickRegion("CombatBoostsClick", deviceId, log);
-            await Task.Delay(500);
-           // await ClickRegion("CombatBoostsClick2", deviceId, log);
-            //log?.Invoke("Click Combat Boosts");
+            try
+            {
+                log?.Invoke("Đang xử lý CombatBoosts...");
+                
+                // Click vào button đầu tiên (nếu có)
+                await ClickRegion("CombatBoostsClick", deviceId, log);
+                await Task.Delay(500);
+                
+                // Click vào button thứ hai (nếu có)
+                await ClickRegion("CombatBoostsClick2", deviceId, log);
+                await Task.Delay(500);
+                
+                // Nếu không có button cụ thể, thử click vào giữa màn hình để đóng popup
+                if (!_regions.Any(r => r.Name == "CombatBoostsClick") && 
+                    !_regions.Any(r => r.Name == "CombatBoostsClick2"))
+                {
+                    log?.Invoke("Không tìm thấy button CombatBoosts cụ thể, thử click giữa màn hình...");
+                    
+                    // Lấy kích thước màn hình thực tế
+                    var screenSize = _adb.GetScreenSize(deviceId);
+                    if (screenSize.HasValue)
+                    {
+                        int centerX = screenSize.Value.width / 2;
+                        int centerY = screenSize.Value.height / 2;
+                        log?.Invoke($"Click giữa màn hình tại ({centerX}, {centerY})");
+                        _adb.Run($"-s {deviceId} shell input tap {centerX} {centerY}");
+                    }
+                    else
+                    {
+                        // Fallback nếu không lấy được kích thước màn hình
+                        log?.Invoke("Không lấy được kích thước màn hình, sử dụng giá trị mặc định");
+                        _adb.Run($"-s {deviceId} shell input tap 540 960");
+                    }
+                    await Task.Delay(500);
+                }
+                
+                log?.Invoke("Hoàn thành xử lý CombatBoosts");
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"Lỗi khi xử lý CombatBoosts: {ex.Message}");
+            }
         }
 
         public async Task ClickLoseAndYes(string deviceId, Action<string> log)
@@ -126,15 +160,15 @@ namespace LUDUS.Services {
             var reg = _regions.FirstOrDefault(r => r.Group == "MySideCell" && r.Name == regionName)
                     ?? _regions.FirstOrDefault(r => r.Name == regionName);
             if (reg == null) {
-                log?.Invoke($"Region '{regionName}' not found.");
+                if (verbose) log?.Invoke($"Region '{regionName}' not found.");
                 return;
             }
-            int x = reg.Rect.X + reg.Rect.Width / 2;
-            int y = reg.Rect.Y + reg.Rect.Height / 2;
+            int x = reg.Rect.X;
+            int y = reg.Rect.Y;
             _adb.Run($"-s {deviceId} shell input tap {x} {y}");
             if (verbose)
             {
-                log?.Invoke($"Clicked {regionName} at ({x},{y})");
+                log?.Invoke($"Click: {regionName}");
             }
             await Task.CompletedTask;
         }
@@ -291,6 +325,42 @@ namespace LUDUS.Services {
         public async Task<bool> SaveTemplateForDebug(Action<string> log)
         {
             return await _roundDetectionSvc.SaveTemplateForDebug(log);
+        }
+
+        /// <summary>
+        /// Lưu ảnh màn hình CombatBoosts để debug
+        /// </summary>
+        /// <param name="deviceId">ID của thiết bị</param>
+        /// <param name="log">Callback để log thông tin</param>
+        /// <returns>True nếu lưu thành công</returns>
+        public async Task<bool> SaveCombatBoostsScreenshot(string deviceId, Action<string> log)
+        {
+            try
+            {
+                using (var screenshot = _capture.Capture(deviceId) as Bitmap)
+                {
+                    if (screenshot == null)
+                    {
+                        log?.Invoke("Không thể chụp màn hình");
+                        return false;
+                    }
+
+                    string debugDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Debug");
+                    if (!Directory.Exists(debugDir)) Directory.CreateDirectory(debugDir);
+                    
+                    string fileName = $"CombatBoosts{DateTime.Now:yyyyMMdd_HHmmss}.png";
+                    string filePath = Path.Combine(debugDir, fileName);
+                    
+                    screenshot.Save(filePath);
+                    log?.Invoke($"Đã lưu ảnh CombatBoosts: {filePath}");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                log?.Invoke($"Lỗi khi lưu ảnh CombatBoosts: {ex.Message}");
+                return false;
+            }
         }
     }
 }

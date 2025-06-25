@@ -101,8 +101,6 @@ namespace LUDUS.Services
                 {
                     // Chuyển đổi sang BGR (tương tự như hàm tham khảo)
                     Cv2.CvtColor(mat0, mat, ColorConversionCodes.BGRA2BGR);
-                    
-                    log?.Invoke($"🔍 Debug {regionName}: Size={mat.Width}x{mat.Height}, Channels={mat.Channels()}");
 
                     // Đường dẫn đến template lifeEmpty.png
                     string templatePath = Path.Combine(_templateBasePath, "Battle", "lifeEmpty.png");
@@ -123,8 +121,6 @@ namespace LUDUS.Services
                             return 0;
                         }
 
-                        log?.Invoke($"🔍 Debug Template: Size={tplMat.Width}x{tplMat.Height}, Channels={tplMat.Channels()}");
-
                         // Thực hiện template matching
                         Cv2.MatchTemplate(mat, tplMat, result, TemplateMatchModes.CCoeffNormed);
 
@@ -139,7 +135,6 @@ namespace LUDUS.Services
                             if (maxVal >= MATCH_THRESHOLD)
                             {
                                 matches.Add(maxLoc);
-                                log?.Invoke($"🎯 Tìm thấy match tại ({maxLoc.X}, {maxLoc.Y}) với độ chính xác {maxVal:F3}");
                                 
                                 // Xóa vùng đã tìm thấy để tìm tiếp
                                 Cv2.Rectangle(resultClone, 
@@ -153,7 +148,6 @@ namespace LUDUS.Services
                             }
                         }
 
-                        log?.Invoke($"Tìm thấy {matches.Count} lifeEmpty trong {regionName}");
                         return matches.Count;
                     }
                 }
@@ -199,7 +193,7 @@ namespace LUDUS.Services
                     int calculatedRound = life1EmptyCount + life2EmptyCount + 1;
                     bool isRound1 = calculatedRound == 1;
 
-                    return new RoundInfo
+                    var roundInfo = new RoundInfo
                     {
                         IsRound1 = isRound1,
                         Life1EmptyCount = life1EmptyCount,
@@ -207,6 +201,11 @@ namespace LUDUS.Services
                         TotalEmptyCount = life1EmptyCount + life2EmptyCount,
                         CalculatedRound = calculatedRound
                     };
+
+                    // Chỉ log thông tin tổng hợp
+                    log?.Invoke($"Round {calculatedRound} (Life1: {life1EmptyCount}, Life2: {life2EmptyCount})");
+
+                    return roundInfo;
                 }
             }
             catch (Exception ex)
@@ -379,7 +378,7 @@ namespace LUDUS.Services
 
         public override string ToString()
         {
-            return $"Round 1: {IsRound1}, Life1 Empty: {Life1EmptyCount}, Life2 Empty: {Life2EmptyCount}, Total: {TotalEmptyCount}, Calculated Round: {CalculatedRound}";
+            return $"Round {CalculatedRound}";
         }
     }
 } 
