@@ -251,8 +251,7 @@ namespace LUDUS.Services {
                             var p2 = new System.Drawing.Point(
                                 second.CellRect.X + second.CellRect.Width / 2,
                                 second.CellRect.Y + second.CellRect.Height / 2);
-                            _adb.Run($"-s {deviceId} shell input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 200");
-                            Thread.Sleep(300);
+                            _adb.Run($"-s {deviceId} shell input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 500");
                             log?.Invoke($"Merged {name} lvl{level}: cell {second.Index}->{first.Index}");
 
                             // Cập nhật lại danh sách hero trong bộ nhớ
@@ -286,18 +285,6 @@ namespace LUDUS.Services {
             return (anyMergeHappened, results.Count);
         }
 
-        private bool IsEmptyCoin(string deviceId, Action<string> log) {
-            var reg = _regions.FirstOrDefault(r => r.Name == "EmptyCoin");
-            if (reg == null) return false;
-            using (var bmp = _capture.Capture(deviceId) as Bitmap)
-            using (var crop = bmp.Clone(reg.Rect, bmp.PixelFormat))
-            using (var tpl = new Bitmap(Path.Combine(_templateBasePath, "Battle", "EmptyCoin.png"))) {
-                bool same = ImageCompare.AreSame(crop, tpl);
-                log?.Invoke($"Is Coin Empty? {(same ? "Yes" : "No")}");
-                return same;
-            }
-        }
-
         private bool IsEmptyCell(Bitmap bmp) {
             const int PATCH = 20, TH = 20;
             int w = bmp.Width, h = bmp.Height;
@@ -328,85 +315,6 @@ namespace LUDUS.Services {
                 }
             }
             return null;
-        }
-
-        /// <summary>
-        /// Kiểm tra có phải round 1 hay không
-        /// </summary>
-        /// <param name="deviceId">ID của thiết bị</param>
-        /// <param name="log">Callback để log thông tin</param>
-        /// <returns>True nếu là round 1</returns>
-        public async Task<bool> IsRound1(string deviceId, Action<string> log)
-        {
-            return await _roundDetectionSvc.IsRound1(deviceId, log);
-        }
-
-        /// <summary>
-        /// Lấy thông tin chi tiết về round hiện tại
-        /// </summary>
-        /// <param name="deviceId">ID của thiết bị</param>
-        /// <param name="log">Callback để log thông tin</param>
-        /// <returns>Thông tin chi tiết về round</returns>
-        public async Task<RoundInfo> GetRoundInfo(string deviceId, Action<string> log)
-        {
-            return await _roundDetectionSvc.GetRoundInfo(deviceId, log);
-        }
-
-        /// <summary>
-        /// Lưu file hình của Life1 và Life2 để kiểm tra
-        /// </summary>
-        /// <param name="deviceId">ID của thiết bị</param>
-        /// <param name="log">Callback để log thông tin</param>
-        /// <returns>True nếu lưu thành công</returns>
-        public async Task<bool> SaveLifeRegions(string deviceId, Action<string> log)
-        {
-            return await _roundDetectionSvc.SaveLifeRegions(deviceId, log);
-        }
-
-        /// <summary>
-        /// Lưu template lifeEmpty.png để debug
-        /// </summary>
-        /// <param name="log">Callback để log thông tin</param>
-        /// <returns>True nếu lưu thành công</returns>
-        public async Task<bool> SaveTemplateForDebug(Action<string> log)
-        {
-            return await _roundDetectionSvc.SaveTemplateForDebug(log);
-        }
-
-        /// <summary>
-        /// Lưu ảnh màn hình CombatBoosts để debug
-        /// </summary>
-        /// <param name="deviceId">ID của thiết bị</param>
-        /// <param name="log">Callback để log thông tin</param>
-        /// <returns>True nếu lưu thành công</returns>
-        public async Task<bool> SaveCombatBoostsScreenshot(string deviceId, Action<string> log)
-        {
-            try
-            {
-                using (var screenshot = _capture.Capture(deviceId) as Bitmap)
-                {
-                    if (screenshot == null)
-                    {
-                        log?.Invoke("Không thể chụp màn hình");
-                        return false;
-                    }
-
-                    string debugDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Debug");
-                    if (!Directory.Exists(debugDir)) Directory.CreateDirectory(debugDir);
-                    
-                    string fileName = $"CombatBoosts{DateTime.Now:yyyyMMdd_HHmmss}.png";
-                    string filePath = Path.Combine(debugDir, fileName);
-                    
-                    screenshot.Save(filePath);
-                    log?.Invoke($"Đã lưu ảnh CombatBoosts: {filePath}");
-                    return true;
-                }
-            }
-            catch (Exception ex)
-            {
-                log?.Invoke($"Lỗi khi lưu ảnh CombatBoosts: {ex.Message}");
-                return false;
-            }
         }
     }
 }

@@ -49,7 +49,7 @@ namespace LUDUS {
                  _capSvc, _adb, _ocrSvc, _mergeService, xmlPath, templatesFolder, _screenSvc);
             
             _ludusAutoService = new LudusAutoService(
-                _adb, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _packageName
+                _adb, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _capSvc, _packageName
             );
             _ludusAutoService.SetResultLogger(UpdateResultUI);
 
@@ -70,12 +70,6 @@ namespace LUDUS {
             btnOpenApp.Click += BtnOpenApp_Click;
             btnCloseApp.Click += BtnCloseApp_Click;
             btnStart.Click += BtnStart_Click;
-            //btnCheckRound1.Click += BtnCheckRound1_Click;
-            //btnSaveLifeRegions.Click += BtnSaveLifeRegions_Click;
-            //btnDebugTemplate.Click += BtnDebugTemplate_Click;
-            //btnToggleRoundDetection.Click += BtnToggleRoundDetection_Click;
-
-
 
             // load devices
             LoadDevices();
@@ -127,17 +121,6 @@ namespace LUDUS {
             }
         }
 
-        private void BtnScreenDetect_Click(object sender, EventArgs e) {
-            var dev = cmbDevices.SelectedItem as string;
-            if (string.IsNullOrEmpty(dev)) {
-                Log("Select device first.");
-                return;
-            }
-            // Gọi DetectScreen và log kết quả
-            string screen = _screenSvc.DetectScreen(dev, Log);
-            Log($"Detected screen: {screen}");
-        }
-
         private void LoadDevices() {
             _devMgr.Refresh();
             cmbDevices.Items.Clear();
@@ -145,14 +128,6 @@ namespace LUDUS {
             if (_devMgr.Devices.Count > 0)
                 cmbDevices.SelectedItem = _devMgr.CurrentDevice;
             Log("Devices loaded.");
-        }
-
-        private void BtnConnect_Click(object sender, EventArgs e) {
-            var dev = cmbDevices.SelectedItem as string;
-            if (string.IsNullOrEmpty(dev)) { Log("Select device first."); return; }
-            if (_devMgr.Connect(dev)) Log($"Connected to {dev}");
-            else Log($"Failed to connect to {dev}");
-            LoadDevices();
         }
 
         private void BtnOpenApp_Click(object sender, EventArgs e) {
@@ -171,90 +146,28 @@ namespace LUDUS {
                 Log("Close app failed.");
         }
 
-        private void BtnAnalyzeBattle_Click(object sender, EventArgs e) {
-            var dev = cmbDevices.SelectedItem as string;
-            if (string.IsNullOrEmpty(dev)) { Log("Select device."); return; }
-            Log("The 'Analyze Battle' button is for legacy testing and is now disabled.");
-            // The old _battleSvc.AnalyzeBattle method was removed.
-        }
-
-        private async void BtnCheckRound1_Click(object sender, EventArgs e) {
-            var deviceId = cmbDevices.SelectedItem as string;
-            if (string.IsNullOrEmpty(deviceId)) {
-                Log("Vui lòng chọn thiết bị trước.");
-                return;
-            }
-
-            try {
-                Log("Đang kiểm tra round 1...");
-                bool isRound1 = await _battleSvc.IsRound1(deviceId, Log);
-                
-                if (isRound1) {
-                    Log("✅ Kết quả: Đây là ROUND 1");
-                } else {
-                    Log("❌ Kết quả: Không phải ROUND 1");
-                }
-
-                // Lấy thông tin chi tiết
-                var roundInfo = await _battleSvc.GetRoundInfo(deviceId, Log);
-                Log($"📊 Thông tin chi tiết: {roundInfo}");
-            }
-            catch (Exception ex) {
-                Log($"❌ Lỗi khi kiểm tra round 1: {ex.Message}");
-            }
-        }
-
-        private async void BtnSaveLifeRegions_Click(object sender, EventArgs e) {
-            var deviceId = cmbDevices.SelectedItem as string;
-            if (string.IsNullOrEmpty(deviceId)) {
-                Log("Vui lòng chọn thiết bị trước.");
-                return;
-            }
-
-            try {
-                Log("Đang lưu file hình Life1 và Life2...");
-                bool success = await _battleSvc.SaveLifeRegions(deviceId, Log);
-                
-                if (success) {
-                    Log("✅ Đã lưu thành công file hình Life1 và Life2");
-                    Log("📁 Kiểm tra thư mục LifeRegions trong thư mục chương trình");
-                } else {
-                    Log("❌ Lỗi khi lưu file hình");
-                }
-            }
-            catch (Exception ex) {
-                Log($"❌ Lỗi khi lưu file hình: {ex.Message}");
-            }
-        }
-
-        private async void BtnDebugTemplate_Click(object sender, EventArgs e) {
-            try {
-                Log("Đang debug template lifeEmpty.png...");
-                bool success = await _battleSvc.SaveTemplateForDebug(Log);
-                
-                if (success) {
-                    Log("✅ Đã lưu thành công template debug");
-                    Log("📁 Kiểm tra thư mục Debug trong thư mục chương trình");
-                } else {
-                    Log("❌ Lỗi khi debug template");
-                }
-            }
-            catch (Exception ex) {
-                Log($"❌ Lỗi khi debug template: {ex.Message}");
-            }
-        }
-
         private void Log(string msg) {
+            string logMessage = $"[{DateTime.Now:HH:mm:ss}] {msg}";
+
             if (richTextBoxLog.InvokeRequired) {
                 richTextBoxLog.Invoke(new Action(() =>
                 {
-                    richTextBoxLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
+                    richTextBoxLog.AppendText($"{logMessage}{Environment.NewLine}");
                     richTextBoxLog.ScrollToCaret();
                 }));
-                return;
             }
-            richTextBoxLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {msg}{Environment.NewLine}");
-            richTextBoxLog.ScrollToCaret();
+            else {
+                richTextBoxLog.AppendText($"{logMessage}{Environment.NewLine}");
+                richTextBoxLog.ScrollToCaret();
+            }
+
+            // Lưu vào file
+            try {
+                string logDir = Path.Combine(Application.StartupPath, "Log");
+                if (!Directory.Exists(logDir)) Directory.CreateDirectory(logDir);
+                string logFile = Path.Combine(logDir, $"debug_{DateTime.Now:yyyyMMdd}.log");
+                File.AppendAllText(logFile, $"{logMessage}{Environment.NewLine}");
+            } catch { }
         }
 
         private void UpdateResultUI(string resultLine)
