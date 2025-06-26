@@ -186,7 +186,11 @@ namespace LUDUS.Services {
                         using (var bmpCheck = newScreenshot.Clone(rectCheck, newScreenshot.PixelFormat))
                         using (var tpl = new Bitmap(Path.Combine(_templateBasePath, "Battle", "HeroCheck.png")))
                         {
-                            if (!ImageCompare.AreSame(bmpCheck, tpl)) continue;
+                            if (!ImageCompare.AreSame(bmpCheck, tpl)) {
+                                log?.Invoke($"[CHECK HERO] Index: {i}, Name: Stone, Level: -1");
+                                results.Add(new CellResult { Index = i, HeroName = "Stone", Level = "-1", CellRect = rect });
+                                continue;
+                            }
                         }
                         string name;
                         using (var bmpName = newScreenshot.Clone(rectName, newScreenshot.PixelFormat))
@@ -206,6 +210,7 @@ namespace LUDUS.Services {
                             var folderLv = Path.Combine(_templateBasePath, "Battle", "LV");
                             lv = TryMatchTemplate(bmpLv, folderLv);
                         }
+                        log?.Invoke($"[CHECK HERO] Index: {i}, Name: {name}, Level: {lv}");
                         results.Add(new CellResult { Index = i, HeroName = name, Level = lv, CellRect = rect });
                     }
                 }
@@ -224,7 +229,7 @@ namespace LUDUS.Services {
                 didMerge = false;
                 // Nhóm theo tên hero, chỉ lấy level < 4
                 var heroGroups = results
-                    .Where(c => !string.IsNullOrEmpty(c.HeroName) && int.TryParse(c.Level, out var lv) && lv < 4)
+                    .Where(c => !string.IsNullOrEmpty(c.HeroName) && c.HeroName != "Stone" && int.TryParse(c.Level, out var lv) && lv < 4)
                     .GroupBy(c => c.HeroName);
 
                 foreach (var group in heroGroups)
@@ -251,7 +256,30 @@ namespace LUDUS.Services {
                             var p2 = new System.Drawing.Point(
                                 second.CellRect.X + second.CellRect.Width / 2,
                                 second.CellRect.Y + second.CellRect.Height / 2);
-                            _adb.Run($"-s {deviceId} shell input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 500");
+                            bool mergeSuccess = false;
+                            int mergeTry = 0;
+                            for (; mergeTry < 2; mergeTry++)
+                            {
+                                _adb.Run($"-s {deviceId} shell input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 100");
+                                await Task.Delay(200); // Đợi thao tác merge
+                                // Kiểm tra lại ô nguồn (second.Index) có trống không
+                                using (var checkScreenshot = _capture.Capture(deviceId) as Bitmap)
+                                using (var bmpSource = checkScreenshot.Clone(second.CellRect, checkScreenshot.PixelFormat))
+                                {
+                                    if (IsEmptyCell(bmpSource))
+                                    {
+                                        mergeSuccess = true;
+                                        break;
+                                    }
+                                }
+                                log?.Invoke($"[MERGE] Ô nguồn {second.Index} chưa trống, thử lại lần {mergeTry + 1}");
+                                await Task.Delay(200);
+                            }
+                            if (!mergeSuccess)
+                            {
+                                log?.Invoke($"[MERGE-FAIL] Merge thất bại tại cell {second.Index}->{first.Index}, bỏ qua cặp này!");
+                                continue;
+                            }
                             log?.Invoke($"Merged {name} lvl{level}: cell {second.Index}->{first.Index}");
 
                             // Cập nhật lại danh sách hero trong bộ nhớ

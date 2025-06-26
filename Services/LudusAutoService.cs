@@ -145,25 +145,25 @@ namespace LUDUS.Logic
                         await Task.Delay(3000, cancellationToken);
                         
                         // Kiểm tra thêm 1 lần nữa sau khi click EndRound
-                        if (await _battleSvc.IsInBattleScreen(deviceId, log))
-                        {
-                            log("Vẫn còn ở màn hình Battle, kiểm tra merge thêm 1 lần nữa...");
-                            bool merged = await _battleSvc.AnalyzeAndMerge(deviceId, log);
-                            if (merged)
-                            {
-                                log("Merge thành công, click EndRound lần cuối...");
-                                await _battleSvc.ClickEndRound(deviceId, log);
-                                await Task.Delay(3000, cancellationToken);
-                            }
-                            else
-                            {
-                                log("No merge, chuyển sang round tiếp theo");
-                            }
-                        }
-                        else
-                        {
-                            log("Đã chuyển khỏi màn hình Battle");
-                        }
+                        //if (await _battleSvc.IsInBattleScreen(deviceId, log))
+                        //{
+                        //    log("Vẫn còn ở màn hình Battle, kiểm tra merge thêm 1 lần nữa...");
+                        //    bool merged = await _battleSvc.AnalyzeAndMerge(deviceId, log);
+                        //    if (merged)
+                        //    {
+                        //        log("Merge thành công, click EndRound lần cuối...");
+                        //        await _battleSvc.ClickEndRound(deviceId, log);
+                        //        await Task.Delay(3000, cancellationToken);
+                        //    }
+                        //    else
+                        //    {
+                        //        log("No merge, chuyển sang round tiếp theo");
+                        //    }
+                        //}
+                        //else
+                        //{
+                        //    log("Đã chuyển khỏi màn hình Battle");
+                        //}
                         break;
 
                     case "EndBattle":
