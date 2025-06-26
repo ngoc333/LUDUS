@@ -213,41 +213,33 @@ namespace LUDUS.Logic
                         break;
                     case "CombatBoosts":
                         log("Phát hiện màn hình CombatBoosts - đang xử lý...");
-                        //await _battleSvc.SaveCombatBoostsScreenshot(deviceId, log);
-                        
-                        // Tăng timeout lên 30 giây
-                        bool combatBoostsHandled = false;
-                        int totalTimeout = 0;
-                        const int maxTotalTimeout = 30000; // 30 giây tối đa
-                        await Task.Delay(6000, cancellationToken);
-                        while (!combatBoostsHandled && totalTimeout < maxTotalTimeout)
-                        {
-                            await _battleSvc.ClickCombatBoosts(deviceId, log);
-                            await Task.Delay(3000, cancellationToken);
-                            
-                            // Kiểm tra xem đã thoát khỏi CombatBoosts chưa
-                            if (!_screenSvc.IsCombatBoostsScreen(deviceId, log))
-                            {
-                                combatBoostsHandled = true;
-                                log("✅ Đã thoát khỏi CombatBoosts thành công");
-                                break;
-                            }
-                            
-                            totalTimeout += 3000;
-                            log($"Vẫn ở CombatBoosts, đã xử lý {totalTimeout/1000}s/{maxTotalTimeout/1000}s");
+                        await _battleSvc.ClickCombatBoosts(deviceId, log);
+                        await Task.Delay(3000, cancellationToken);
+
+                        // Kiểm tra xem đã thoát khỏi CombatBoosts chưa
+                        if (!_screenSvc.IsCombatBoostsScreen(deviceId, log)) {
+
+                            log("✅ Đã thoát khỏi CombatBoosts thành công");
+                            break;
                         }
-                        
-                        if (!combatBoostsHandled)
-                        {
-                            log("🚨 Timeout xử lý CombatBoosts, restart app...");
-                            await _battleSvc.SaveCombatBoostsScreenshot(deviceId, log);
+                        else {
+                            log("Error Restart");
                             await RestartAppSafe(deviceId, log, cancellationToken);
                             break;
                         }
-                        else
-                        {
-                            await Task.Delay(2000, cancellationToken);
-                        }
+                        //await _battleSvc.SaveCombatBoostsScreenshot(deviceId, log);
+
+                        // Tăng timeout lên 30 giây
+                        //bool combatBoostsHandled = false;
+                        //int totalTimeout = 0;
+                        //const int maxTotalTimeout = 30000; // 30 giây tối đa
+                        //await Task.Delay(6000, cancellationToken);
+                        //while (!combatBoostsHandled && totalTimeout < maxTotalTimeout)
+                        //{
+
+                        //}
+
+
                         break;
 
                     case "WaitPvp":

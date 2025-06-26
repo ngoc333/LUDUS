@@ -109,36 +109,12 @@ namespace LUDUS.Services {
                 
                 // Click vào button đầu tiên (nếu có)
                 await ClickRegion("CombatBoostsClick", deviceId, log);
-                await Task.Delay(500);
+                await Task.Delay(3000);
                 
                 // Click vào button thứ hai (nếu có)
                 await ClickRegion("CombatBoostsClick2", deviceId, log);
                 await Task.Delay(500);
-                
-                // Nếu không có button cụ thể, thử click vào giữa màn hình để đóng popup
-                if (!_regions.Any(r => r.Name == "CombatBoostsClick") && 
-                    !_regions.Any(r => r.Name == "CombatBoostsClick2"))
-                {
-                    log?.Invoke("Không tìm thấy button CombatBoosts cụ thể, thử click giữa màn hình...");
-                    
-                    // Lấy kích thước màn hình thực tế
-                    var screenSize = _adb.GetScreenSize(deviceId);
-                    if (screenSize.HasValue)
-                    {
-                        int centerX = screenSize.Value.width / 2;
-                        int centerY = screenSize.Value.height / 2;
-                        log?.Invoke($"Click giữa màn hình tại ({centerX}, {centerY})");
-                        _adb.Run($"-s {deviceId} shell input tap {centerX} {centerY}");
-                    }
-                    else
-                    {
-                        // Fallback nếu không lấy được kích thước màn hình
-                        log?.Invoke("Không lấy được kích thước màn hình, sử dụng giá trị mặc định");
-                        _adb.Run($"-s {deviceId} shell input tap 540 960");
-                    }
-                    await Task.Delay(500);
-                }
-                
+               
                 log?.Invoke("Hoàn thành xử lý CombatBoosts");
             }
             catch (Exception ex)
@@ -173,7 +149,8 @@ namespace LUDUS.Services {
             await Task.CompletedTask;
         }
 
-        private async Task<(bool merged, int heroCount)> AnalyzeAndMergeWithCount(string deviceId, Action<string> log) {
+        private async Task<(bool merged, int heroCount)> AnalyzeAndMergeWithCount(string deviceId, Action<string> log)
+        {
             var baseCell = _regions.First(r => r.Group == "MySideCell" && r.Name == "C1").Rect;
             const int rows = 4;
             var cellRects = new List<Rectangle>();
@@ -187,57 +164,126 @@ namespace LUDUS.Services {
             var rectCheck = heroInfo.First(r => r.Name == "HeroCheck").Rect;
             var rectName = heroInfo.First(r => r.Name == "Name").Rect;
             var rectLv = heroInfo.First(r => r.Name == "LV").Rect;
-            
-            using(Bitmap screenshot = _capture.Capture(deviceId) as Bitmap)
+
+            // 1. Quét bàn cờ 1 lần duy nhất
+            List<CellResult> results = new List<CellResult>();
+            using (Bitmap screenshot = _capture.Capture(deviceId) as Bitmap)
             {
-                var results = new List<CellResult>();
-                try {
-                    for (int i = 0; i < cellRects.Count; i++) {
-                        var rect = cellRects[i];
-                        using (var bmpCell = screenshot.Clone(rect, screenshot.PixelFormat)) {
-                            if (IsEmptyCell(bmpCell)) continue;
-                        }
-                        var px = rect.X + rect.Width / 2;
-                        var py = rect.Y + rect.Height / 2;
-                        _adb.Run($"-s {deviceId} shell input tap {px} {py}");
-                        await Task.Delay(100);
-                        
-                        using (var newScreenshot = _capture.Capture(deviceId) as Bitmap)
+                for (int i = 0; i < cellRects.Count; i++)
+                {
+                    var rect = cellRects[i];
+                    using (var bmpCell = screenshot.Clone(rect, screenshot.PixelFormat))
+                    {
+                        if (IsEmptyCell(bmpCell)) continue;
+                    }
+                    // Click để lấy thông tin hero
+                    var px = rect.X + rect.Width / 2;
+                    var py = rect.Y + rect.Height / 2;
+                    _adb.Run($"-s {deviceId} shell input tap {px} {py}");
+                    await Task.Delay(100);
+                    using (var newScreenshot = _capture.Capture(deviceId) as Bitmap)
+                    {
+                        using (var bmpCheck = newScreenshot.Clone(rectCheck, newScreenshot.PixelFormat))
+                        using (var tpl = new Bitmap(Path.Combine(_templateBasePath, "Battle", "HeroCheck.png")))
                         {
-                            using (var bmpCheck = newScreenshot.Clone(rectCheck, newScreenshot.PixelFormat))
-                            using (var tpl = new Bitmap(Path.Combine(_templateBasePath, "Battle", "HeroCheck.png"))) {
-                                if (!ImageCompare.AreSame(bmpCheck, tpl)) continue;
+                            if (!ImageCompare.AreSame(bmpCheck, tpl)) continue;
+                        }
+                        string name;
+                        using (var bmpName = newScreenshot.Clone(rectName, newScreenshot.PixelFormat))
+                        {
+                            var folder = Path.Combine(_templateBasePath, "Battle", "HeroName");
+                            name = TryMatchTemplate(bmpName, folder);
+                            if (string.IsNullOrEmpty(name))
+                            {
+                                name = _ocr.Recognize(bmpName)?.Trim();
+                                if (!string.IsNullOrEmpty(name) && !File.Exists(Path.Combine(folder, name + ".png")))
+                                    bmpName.Save(Path.Combine(folder, name + ".png"));
                             }
-                            string name;
-                            using (var bmpName = newScreenshot.Clone(rectName, newScreenshot.PixelFormat)) {
-                                var folder = Path.Combine(_templateBasePath, "Battle", "HeroName");
-                                name = TryMatchTemplate(bmpName, folder);
-                                if (string.IsNullOrEmpty(name)) {
-                                    name = _ocr.Recognize(bmpName)?.Trim();
-                                    if (!string.IsNullOrEmpty(name) && !File.Exists(Path.Combine(folder, name + ".png")))
-                                        bmpName.Save(Path.Combine(folder, name + ".png"));
-                                }
+                        }
+                        string lv;
+                        using (var bmpLv = newScreenshot.Clone(rectLv, newScreenshot.PixelFormat))
+                        {
+                            var folderLv = Path.Combine(_templateBasePath, "Battle", "LV");
+                            lv = TryMatchTemplate(bmpLv, folderLv);
+                        }
+                        results.Add(new CellResult { Index = i, HeroName = name, Level = lv, CellRect = rect });
+                    }
+                }
+            }
+
+            if (results.Count < 2)
+            {
+                return (false, results.Count);
+            }
+
+            // 2. Merge liên tục trong bộ nhớ, ưu tiên vị trí trung tâm
+            bool anyMergeHappened = false;
+            bool didMerge;
+            do
+            {
+                didMerge = false;
+                // Nhóm theo tên hero, chỉ lấy level < 4
+                var heroGroups = results
+                    .Where(c => !string.IsNullOrEmpty(c.HeroName) && int.TryParse(c.Level, out var lv) && lv < 4)
+                    .GroupBy(c => c.HeroName);
+
+                foreach (var group in heroGroups)
+                {
+                    var name = group.Key;
+                    // Nhóm tiếp theo level
+                    var levelMap = group.GroupBy(c => int.Parse(c.Level))
+                        .ToDictionary(g => g.Key, g => g.ToList());
+                    foreach (var level in levelMap.Keys.OrderBy(l => l))
+                    {
+                        var list = levelMap[level];
+                        if (list.Count >= 2)
+                        {
+                            // Ưu tiên merge 2 hero ở vị trí trung tâm hơn
+                            var centerCol = GridCols / 2.0;
+                            var centerRow = rows / 2.0;
+                            var sorted = list.OrderBy(c => Math.Abs((c.Index % GridCols) - centerCol) + Math.Abs((c.Index / GridCols) - centerRow)).ToList();
+                            var first = sorted[0];
+                            var second = sorted[1];
+                            // Thực hiện swipe từ second vào first
+                            var p1 = new System.Drawing.Point(
+                                first.CellRect.X + first.CellRect.Width / 2,
+                                first.CellRect.Y + first.CellRect.Height / 2);
+                            var p2 = new System.Drawing.Point(
+                                second.CellRect.X + second.CellRect.Width / 2,
+                                second.CellRect.Y + second.CellRect.Height / 2);
+                            _adb.Run($"-s {deviceId} shell input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 200");
+                            Thread.Sleep(300);
+                            log?.Invoke($"Merged {name} lvl{level}: cell {second.Index}->{first.Index}");
+
+                            // Cập nhật lại danh sách hero trong bộ nhớ
+                            results.RemoveAll(c => c.Index == first.Index || c.Index == second.Index);
+                            // Thêm hero mới vào vị trí first với level+1
+                            results.Add(new CellResult
+                            {
+                                Index = first.Index,
+                                HeroName = name,
+                                Level = (level + 1).ToString(),
+                                CellRect = first.CellRect
+                            });
+
+                            // Sau mỗi lần merge, thử click coin để roll thêm hero nếu còn slot trống
+                            if (results.Count < GridCols * rows)
+                            {
+                                await ClickCoin(deviceId, 1, log);
+                                await Task.Delay(200); // Đợi hero mới xuất hiện
+                                // Không quét lại bàn cờ, chỉ tăng số lượng hero nếu có
                             }
-                            string lv;
-                            using (var bmpLv = newScreenshot.Clone(rectLv, newScreenshot.PixelFormat)) {
-                                var folderLv = Path.Combine(_templateBasePath, "Battle", "LV");
-                                lv = TryMatchTemplate(bmpLv, folderLv);
-                            }
-                            results.Add(new CellResult { Index = i, HeroName = name, Level = lv, CellRect = rect });
+
+                            didMerge = true;
+                            anyMergeHappened = true;
+                            break; // Chỉ merge 1 cặp mỗi lần, sau đó lặp lại để cập nhật danh sách
                         }
                     }
-                } finally {
-                    // No need to dispose screenshot here due to the outer using block
+                    if (didMerge) break;
                 }
-                
-                if (results.Count < 2)
-                {
-                    return (false, results.Count);
-                }
+            } while (didMerge);
 
-                bool didMerge = _mergeService.MergeHeroes(deviceId, results, GridCols, log);
-                return (didMerge, results.Count);
-            }
+            return (anyMergeHappened, results.Count);
         }
 
         private bool IsEmptyCoin(string deviceId, Action<string> log) {
