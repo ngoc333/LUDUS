@@ -5,7 +5,7 @@ namespace LUDUS.Services {
         private readonly string _adbPath;
         public AdbService(string adbPath = "adb") => _adbPath = adbPath;
 
-        public (string Output, string Error, int ExitCode) Run(string args) {
+        public (string Output, string Error, int ExitCode) Run(string args, int timeoutMilliseconds = 3000) {
             var psi = new ProcessStartInfo {
                 FileName = _adbPath,
                 Arguments = args,
@@ -18,7 +18,13 @@ namespace LUDUS.Services {
             using (var proc = Process.Start(psi)) {
                 string output = proc.StandardOutput.ReadToEnd();
                 string error = proc.StandardError.ReadToEnd();
-                proc.WaitForExit();
+
+                bool exited = proc.WaitForExit(timeoutMilliseconds);
+                if (!exited) {
+                    try { proc.Kill(); } catch { }
+                    return (output, "Process timed out.", -1);
+                }
+
                 return (output, error, proc.ExitCode);
             }
         }
@@ -30,50 +36,27 @@ namespace LUDUS.Services {
         }
 
         // Nếu không có RunWithOutput thì có thể dùng lệnh shell và đọc output (ProcessStartInfo)
-        public string RunWithOutput(string args) {
-            var psi = new System.Diagnostics.ProcessStartInfo {
-                FileName = "adb",
+        public string RunWithOutput(string args, int timeoutMilliseconds = 3000) {
+            var psi = new ProcessStartInfo {
+                FileName = _adbPath,
                 Arguments = args,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            using (var proc = System.Diagnostics.Process.Start(psi)) {
+
+            using (var proc = Process.Start(psi)) {
                 string output = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit();
+                bool exited = proc.WaitForExit(timeoutMilliseconds);
+
+                if (!exited) {
+                    try { proc.Kill(); } catch { }
+                    return $"Process timed out after {timeoutMilliseconds}ms.";
+                }
+
                 return output;
             }
-        }
-
-        /// <summary>
-        /// Lấy kích thước màn hình của thiết bị
-        /// </summary>
-        /// <param name="deviceId">ID của thiết bị</param>
-        /// <returns>Tuple (width, height) hoặc null nếu lỗi</returns>
-        public (int width, int height)? GetScreenSize(string deviceId)
-        {
-            try
-            {
-                string output = RunWithOutput($"-s {deviceId} shell wm size");
-                if (string.IsNullOrWhiteSpace(output)) return null;
-                
-                // Output format: "Physical size: 1080x1920"
-                var parts = output.Trim().Split(':');
-                if (parts.Length < 2) return null;
-                
-                var sizeParts = parts[1].Trim().Split('x');
-                if (sizeParts.Length != 2) return null;
-                
-                if (int.TryParse(sizeParts[0].Trim(), out int width) && 
-                    int.TryParse(sizeParts[1].Trim(), out int height))
-                {
-                    return (width, height);
-                }
-            }
-            catch { }
-            
-            return null;
         }
     }
 }

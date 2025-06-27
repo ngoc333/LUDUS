@@ -273,7 +273,7 @@ namespace LUDUS.Services {
                                     }
                                 }
                                 log?.Invoke($"[MERGE] Ô nguồn {second.Index} chưa trống, thử lại lần {mergeTry + 1}");
-                                await Task.Delay(200);
+                                await Task.Delay(1000);
                             }
                             if (!mergeSuccess)
                             {

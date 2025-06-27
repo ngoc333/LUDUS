@@ -4,6 +4,7 @@ using System.Threading;
 using System.Windows.Forms;
 using LUDUS.Logic;
 using LUDUS.Services;
+using System.Threading.Tasks;
 
 namespace LUDUS {
     public partial class Form1 : Form {
@@ -82,6 +83,20 @@ namespace LUDUS {
                 Log("Stop request received. Shutting down gracefully...");
                 _cancellationTokenSource?.Cancel();
                 btnStart.Enabled = false; // Disable until the task is fully cancelled
+                
+                // Đợi task hoàn thành trước khi enable lại button
+                try
+                {
+                    // Đợi một chút để task có thể cancel
+                    await Task.Delay(100);
+                }
+                catch { }
+                
+                _isAutoRunning = false;
+                btnStart.Text = "Start";
+                btnStart.Enabled = true;
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = null;
                 return;
             }
 
@@ -116,7 +131,7 @@ namespace LUDUS {
                 _isAutoRunning = false;
                 btnStart.Text = "Start";
                 btnStart.Enabled = true;
-                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
             }
         }
@@ -186,8 +201,8 @@ namespace LUDUS {
             {
                 richTextBoxResult.AppendText($"{resultLine}{Environment.NewLine}");
                 richTextBoxResult.ScrollToCaret();
-                lblWin.Text = $"Thắng: {_ludusAutoService.WinCount}";
-                lblLose.Text = $"Thua: {_ludusAutoService.LoseCount}";
+                lblWin.Text = $"Thắng\n{_ludusAutoService.WinCount}";
+                lblLose.Text = $"Thua:\n{_ludusAutoService.LoseCount}";
             }
         }
 
