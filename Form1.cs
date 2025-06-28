@@ -4,6 +4,7 @@ using System.Threading;
 using System.Windows.Forms;
 using LUDUS.Logic;
 using LUDUS.Services;
+using LUDUS.Utils;
 using System.Threading.Tasks;
 
 namespace LUDUS {
@@ -57,7 +58,11 @@ namespace LUDUS {
             // wiring
             btnCapture.Click += (s, e) => {
                 var dev = cmbDevices.SelectedItem as string;
-                if (string.IsNullOrEmpty(dev)) { Log("Select device first."); return; }
+                if (string.IsNullOrEmpty(dev)) { 
+                    Log("Không có thiết bị nào được chọn. Đang thử refresh devices...");
+                    RefreshDevices();
+                    return; 
+                }
                 var img = _capSvc.Capture(dev);
                 if (img != null) {
                     string outFile = Path.Combine(Application.StartupPath, "Screenshots", $"screen{DateTime.Now:yyyyMMddHHmmss}.png");
@@ -65,7 +70,8 @@ namespace LUDUS {
                     Log($"Captured screenshot to {outFile}");
                 }
                 else {
-                    Log("Capture failed.");
+                    Log("Capture failed. Có thể thiết bị đã ngắt kết nối. Đang thử refresh devices...");
+                    RefreshDevices();
                 }
             };
             btnOpenApp.Click += BtnOpenApp_Click;
@@ -111,8 +117,16 @@ namespace LUDUS {
             var deviceId = cmbDevices.SelectedItem as string;
             if (string.IsNullOrEmpty(deviceId))
             {
-                Log("Please select a device first.");
-                return;
+                Log("Không có thiết bị nào được chọn. Đang thử refresh devices...");
+                RefreshDevices();
+                
+                // Thử lấy lại thiết bị sau khi refresh
+                deviceId = cmbDevices.SelectedItem as string;
+                if (string.IsNullOrEmpty(deviceId))
+                {
+                    Log("Vẫn không tìm thấy thiết bị nào. Vui lòng kiểm tra LDPlayer và thử lại.");
+                    return;
+                }
             }
 
             _isAutoRunning = true;
@@ -148,10 +162,62 @@ namespace LUDUS {
             cmbDevices.Items.AddRange(_devMgr.Devices.ToArray());
             if (_devMgr.Devices.Count > 0)
                 cmbDevices.SelectedItem = _devMgr.CurrentDevice;
-            Log("Devices loaded.");
+            Log($"Devices loaded: {_devMgr.Devices.Count} thiết bị tìm thấy.");
         }
 
-        private void BtnOpenApp_Click(object sender, EventArgs e) {
+        private void RefreshDevices() {
+            try
+            {
+                Log("Đang kiểm tra và load lại danh sách thiết bị...");
+                
+                // Refresh danh sách thiết bị
+                _devMgr.Refresh();
+                
+                // Lưu thiết bị đang được chọn
+                string currentSelectedDevice = cmbDevices.SelectedItem as string;
+                
+                // Clear và load lại combobox
+                cmbDevices.Items.Clear();
+                cmbDevices.Items.AddRange(_devMgr.Devices.ToArray());
+                
+                if (_devMgr.Devices.Count > 0)
+                {
+                    // Thử chọn lại thiết bị cũ nếu vẫn tồn tại
+                    if (!string.IsNullOrEmpty(currentSelectedDevice) && _devMgr.Devices.Contains(currentSelectedDevice))
+                    {
+                        cmbDevices.SelectedItem = currentSelectedDevice;
+                        Log($"✅ Đã tìm thấy {_devMgr.Devices.Count} thiết bị. Giữ nguyên thiết bị đã chọn: {currentSelectedDevice}");
+                    }
+                    else
+                    {
+                        // Chọn thiết bị đầu tiên
+                        cmbDevices.SelectedItem = _devMgr.CurrentDevice;
+                        Log($"✅ Đã tìm thấy {_devMgr.Devices.Count} thiết bị. Đã chọn: {cmbDevices.SelectedItem}");
+                    }
+                }
+                else
+                {
+                    Log("❌ Không tìm thấy thiết bị nào. Vui lòng kiểm tra:");
+                    Log("   - LDPlayer đã khởi động chưa?");
+                    Log("   - ADB đã được cài đặt và hoạt động chưa?");
+                    Log("   - Có thể thử khởi động lại LDPlayer.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ Lỗi khi refresh devices: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Phương thức public để refresh devices từ bên ngoài
+        /// </summary>
+        public void RefreshDevicesPublic()
+        {
+            RefreshDevices();
+        }
+
+        private async void BtnOpenApp_Click(object sender, EventArgs e) {
             try
             {
                 Log("Đang khởi động LDPlayer...");
@@ -172,12 +238,97 @@ namespace LUDUS {
                 }
                 
                 // Khởi động LDPlayer
-                System.Diagnostics.Process.Start(ldPlayerPath);
-                Log("Đã khởi động LDPlayer. Vui lòng chờ giả lập khởi động hoàn tất.");
+                var process = System.Diagnostics.Process.Start(ldPlayerPath);
+                
+                // Chờ một chút để LDPlayer khởi động
+                Thread.Sleep(2000);
+                
+                // Tìm và minimize cửa sổ LDPlayer
+                try
+                {
+                    var ldPlayerProcesses = System.Diagnostics.Process.GetProcessesByName("dnplayer");
+                    foreach (var proc in ldPlayerProcesses)
+                    {
+                        if (proc.MainWindowHandle != IntPtr.Zero)
+                        {
+                            // Minimize cửa sổ
+                            Win32.ShowWindow(proc.MainWindowHandle, Win32.SW_MINIMIZE);
+                            Log("Đã minimize cửa sổ LDPlayer.");
+                            break;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Không thể minimize cửa sổ LDPlayer: {ex.Message}");
+                }
+                
+                Log("Đã khởi động LDPlayer. Đang chờ giả lập khởi động hoàn tất...");
+                
+                // Chờ và kiểm tra thiết bị
+                await WaitForDeviceAndLoad();
             }
             catch (Exception ex)
             {
                 Log($"Lỗi khi khởi động LDPlayer: {ex.Message}");
+            }
+        }
+
+        private async Task WaitForDeviceAndLoad()
+        {
+            try
+            {
+                Log("Đang chờ LDPlayer khởi động và kết nối ADB...");
+                
+                int maxWaitTime = 60; // Tối đa 1 phút
+                int waited = 0;
+                int checkInterval = 3000; // Kiểm tra mỗi 3 giây
+                
+                while (waited < maxWaitTime * 1000)
+                {
+                    // Refresh danh sách thiết bị
+                    _devMgr.Refresh();
+                    
+                    if (_devMgr.Devices.Count > 0)
+                    {
+                        Log($"✅ Tìm thấy {_devMgr.Devices.Count} thiết bị!");
+                        
+                        // Load devices vào combobox
+                        LoadDevices();
+                        
+                        // Chọn thiết bị đầu tiên nếu chưa có thiết bị nào được chọn
+                        if (cmbDevices.SelectedItem == null && cmbDevices.Items.Count > 0)
+                        {
+                            cmbDevices.SelectedIndex = 0;
+                            Log($"Đã tự động chọn thiết bị: {cmbDevices.SelectedItem}");
+                        }
+                        
+                        Log("LDPlayer đã sẵn sàng sử dụng!");
+                        return;
+                    }
+                    
+                    Log($"Chờ LDPlayer khởi động... ({waited / 1000}s/{maxWaitTime}s)");
+                    await Task.Delay(checkInterval);
+                    waited += checkInterval;
+                }
+                
+                // Nếu timeout, vẫn load devices để kiểm tra
+                Log("⚠️ Timeout chờ LDPlayer. Vẫn thử load devices...");
+                LoadDevices();
+                
+                if (_devMgr.Devices.Count == 0)
+                {
+                    Log("❌ Không tìm thấy thiết bị nào. Vui lòng kiểm tra:");
+                    Log("   - LDPlayer đã khởi động hoàn toàn chưa?");
+                    Log("   - ADB đã được cài đặt và hoạt động chưa?");
+                    Log("   - Có thể thử nhấn nút 'Load Devices' để kiểm tra lại.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ Lỗi khi chờ thiết bị: {ex.Message}");
+                // Vẫn thử load devices
+                LoadDevices();
             }
         }
 

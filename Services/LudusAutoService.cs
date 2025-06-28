@@ -461,8 +461,33 @@ namespace LUDUS.Logic
                 
                 if (File.Exists(ldPlayerPath))
                 {
-                    System.Diagnostics.Process.Start(ldPlayerPath);
-                    log("Đã khởi động LDPlayer");
+                    // Khởi động LDPlayer
+                    var process = System.Diagnostics.Process.Start(ldPlayerPath);
+                    
+                    // Chờ một chút để LDPlayer khởi động
+                    await Task.Delay(2000);
+                    
+                    // Tìm và minimize cửa sổ LDPlayer
+                    try
+                    {
+                        var ldPlayerProcesses2 = System.Diagnostics.Process.GetProcessesByName("dnplayer");
+                        foreach (var proc in ldPlayerProcesses2)
+                        {
+                            if (proc.MainWindowHandle != IntPtr.Zero)
+                            {
+                                // Minimize cửa sổ
+                                LUDUS.Utils.Win32.ShowWindow(proc.MainWindowHandle, LUDUS.Utils.Win32.SW_MINIMIZE);
+                                log("Đã minimize cửa sổ LDPlayer.");
+                                break;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        log($"Không thể minimize cửa sổ LDPlayer: {ex.Message}");
+                    }
+                    
+                    log("Đã khởi động LDPlayer ở chế độ minimized");
                 }
                 else
                 {
