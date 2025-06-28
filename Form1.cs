@@ -83,8 +83,7 @@ namespace LUDUS {
                 Log("Stop request received. Shutting down gracefully...");
                 _cancellationTokenSource?.Cancel();
                 btnStart.Enabled = false; // Disable until the task is fully cancelled
-                
-                // Đợi task hoàn thành trước khi enable lại button
+                _adb.StopShell(); // Dừng persistent shell khi stop
                 try
                 {
                     // Đợi một chút để task có thể cancel
@@ -112,6 +111,8 @@ namespace LUDUS {
             btnStart.Text = "Stop";
             _cancellationTokenSource = new CancellationTokenSource();
 
+            _adb.StartShell(deviceId); // Khởi tạo persistent shell khi start
+
             try
             {
                 Log("Starting auto service...");
@@ -131,6 +132,7 @@ namespace LUDUS {
                 _isAutoRunning = false;
                 btnStart.Text = "Start";
                 btnStart.Enabled = true;
+                _adb.StopShell(); // Đảm bảo dừng shell khi kết thúc
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
             }
@@ -206,5 +208,11 @@ namespace LUDUS {
             }
         }
 
+        // Đảm bảo dừng shell khi đóng form
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _adb.StopShell();
+            base.OnFormClosing(e);
+        }
     }
 }

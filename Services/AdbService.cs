@@ -1,9 +1,80 @@
 using System.Diagnostics;
+using System;
+using System.IO;
+using System.Text;
+using System.Threading;
 
 namespace LUDUS.Services {
     public class AdbService {
         private readonly string _adbPath;
         public AdbService(string adbPath = "adb") => _adbPath = adbPath;
+
+        // Persistent shell process
+        private Process _shellProc;
+        private StreamWriter _shellStdin;
+        private StreamReader _shellStdout;
+        private readonly object _shellLock = new object();
+        private bool _shellReady = false;
+
+        // Khởi tạo persistent shell
+        public void StartShell(string deviceId) {
+            lock (_shellLock) {
+                if (_shellProc != null && !_shellProc.HasExited) return;
+                var psi = new ProcessStartInfo {
+                    FileName = _adbPath,
+                    Arguments = $"-s {deviceId} shell",
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+                _shellProc = Process.Start(psi);
+                _shellStdin = _shellProc.StandardInput;
+                _shellStdout = _shellProc.StandardOutput;
+                _shellReady = true;
+            }
+        }
+
+        // Đóng persistent shell
+        public void StopShell() {
+            lock (_shellLock) {
+                _shellReady = false;
+                try { _shellStdin?.WriteLine("exit"); } catch { }
+                try { _shellProc?.Kill(); } catch { }
+                try { _shellStdin?.Dispose(); } catch { }
+                try { _shellStdout?.Dispose(); } catch { }
+                try { _shellProc?.Dispose(); } catch { }
+                _shellProc = null;
+                _shellStdin = null;
+                _shellStdout = null;
+            }
+        }
+
+        // Gửi lệnh shell qua persistent process
+        public string RunShellPersistent(string cmd, int timeoutMilliseconds = 3000) {
+            lock (_shellLock) {
+                if (!_shellReady || _shellProc == null || _shellProc.HasExited)
+                    throw new InvalidOperationException("Shell chưa được khởi tạo hoặc đã dừng.");
+                // Sinh một marker để biết đâu là kết thúc output
+                string marker = $"__LUDUS_DONE_{Guid.NewGuid().ToString("N")}";
+                _shellStdin.WriteLine(cmd);
+                _shellStdin.WriteLine($"echo {marker}");
+                _shellStdin.Flush();
+                var sb = new StringBuilder();
+                string line;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                while (sw.ElapsedMilliseconds < timeoutMilliseconds) {
+                    line = _shellStdout.ReadLine();
+                    if (line == null) break;
+                    if (line.Trim() == marker) break;
+                    sb.AppendLine(line);
+                }
+                return sb.ToString().TrimEnd();
+            }
+        }
 
         public (string Output, string Error, int ExitCode) Run(string args, int timeoutMilliseconds = 3000) {
             var psi = new ProcessStartInfo {

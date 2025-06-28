@@ -53,7 +53,7 @@ namespace LUDUS.Services {
                         {
                             int xTap = maxLoc.X + tplMat.Width / 2;
                             int yTap = maxLoc.Y + tplMat.Height / 2;
-                            _adb.Run($"-s {deviceId} shell input tap {xTap} {yTap}");
+                            _adb.RunShellPersistent($"input tap {xTap} {yTap}");
                             log?.Invoke($"Click PVP button");
                             return true;
                         }

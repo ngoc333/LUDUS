@@ -46,7 +46,7 @@ namespace LUDUS.Services {
                             var p2 = new Point(
                                 second.CellRect.X + second.CellRect.Width / 2,
                                 second.CellRect.Y + second.CellRect.Height / 2);
-                            _adb.Run($"-s {deviceId} shell input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 200");
+                            _adb.RunShellPersistent($"input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 200");
                             Thread.Sleep(300);
                             var pos1 = $"{first.Index / cols}_{first.Index % cols}";
                             var pos2 = $"{second.Index / cols}_{second.Index % cols}";

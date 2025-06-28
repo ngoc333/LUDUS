@@ -54,15 +54,15 @@ namespace LUDUS.Services {
             }
 
             await ClickRegion("SpellsClick", deviceId, log, false);
-            await Task.Delay(300);
+            await Task.Delay(100);
 
             string spellToClick = $"Spell{round}";
             await ClickRegion(spellToClick, deviceId, log, false);
-            await Task.Delay(300);
+            await Task.Delay(100);
 
             await ClickRegion("CastClick", deviceId, log, false);
             log?.Invoke($"Spell {round}");
-            await Task.Delay(1000); // Wait for spell animation
+            //await Task.Delay(1000); // Wait for spell animation
         }
 
         public async Task ClickCoin(string deviceId, int count, Action<string> log) {
@@ -130,7 +130,7 @@ namespace LUDUS.Services {
             }
             int x = reg.Rect.X;
             int y = reg.Rect.Y;
-            _adb.Run($"-s {deviceId} shell input tap {x} {y}");
+            _adb.RunShellPersistent($"input tap {x} {y}");
             if (verbose) {
                 log?.Invoke($"Click: {regionName}");
             }
@@ -163,7 +163,7 @@ namespace LUDUS.Services {
                     // Click để lấy thông tin hero
                     var px = rect.X + rect.Width / 2;
                     var py = rect.Y + rect.Height / 2;
-                    _adb.Run($"-s {deviceId} shell input tap {px} {py}");
+                    _adb.RunShellPersistent($"input tap {px} {py}");
                     await Task.Delay(100);
                     using (var newScreenshot = _capture.Capture(deviceId) as Bitmap) {
                         using (var bmpCheck = newScreenshot.Clone(rectCheck, newScreenshot.PixelFormat))
@@ -233,7 +233,7 @@ namespace LUDUS.Services {
                             bool mergeSuccess = false;
                             int mergeTry = 0;
                             for (; mergeTry < 2; mergeTry++) {
-                                _adb.Run($"-s {deviceId} shell input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 100");
+                                _adb.RunShellPersistent($"input swipe {p2.X} {p2.Y} {p1.X} {p1.Y} 100");
                                 await Task.Delay(200); // Đợi thao tác merge
                                 // Kiểm tra lại ô nguồn (second.Index) có trống không
                                 using (var checkScreenshot = _capture.Capture(deviceId) as Bitmap)

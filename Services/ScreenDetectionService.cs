@@ -84,7 +84,7 @@ namespace LUDUS.Services {
                         if (maxVal >= MatchThreshold) {
                             int xTap = maxLoc.X + tplMat.Width / 2;
                             int yTap = maxLoc.Y + tplMat.Height / 2;
-                            _adb.Run($"-s {deviceId} shell input tap {xTap} {yTap}");
+                            _adb.RunShellPersistent($"input tap {xTap} {yTap}");
                             log?.Invoke($"Button: {btnName}");
                             System.Threading.Thread.Sleep(500);
                             return btnName;
