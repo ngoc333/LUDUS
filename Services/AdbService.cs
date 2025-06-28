@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Collections.Generic;
 
 namespace LUDUS.Services {
     public class AdbService {

@@ -28,6 +28,9 @@ namespace LUDUS.Services {
         private readonly RoundDetectionService _roundDetectionSvc;
         private readonly List<RegionInfo> _regions;
         private const int GridCols = 5;
+        
+        // Lưu trữ những cặp merge đã thất bại để tránh thử lại
+        private HashSet<string> _failedMergePairs = new HashSet<string>();
 
         public BattleAnalyzerService(
             ScreenCaptureService captureService,
@@ -69,7 +72,7 @@ namespace LUDUS.Services {
             log?.Invoke($"Coin x{count}");
             for (int i = 0; i < count; i++) {
                 await ClickRegion("Coin", deviceId, log, false); // Don't log every single click
-                await Task.Delay(150);
+                await Task.Delay(100);
             }
         }
 
@@ -83,6 +86,10 @@ namespace LUDUS.Services {
             var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log);
             if (merged) log?.Invoke("Merge ✓");
             return merged;
+        }
+
+        public void ResetFailedMergePairs() {
+            _failedMergePairs.Clear();
         }
 
         public async Task ClickEndRound(string deviceId, Action<string> log) {
@@ -100,12 +107,12 @@ namespace LUDUS.Services {
                 log?.Invoke("Đang xử lý CombatBoosts...");
 
                 // Click vào button đầu tiên (nếu có)
-                await ClickRegion("CombatBoostsClick", deviceId, log);
-                await Task.Delay(3000);
+                await ClickRegion("CombatBoostsClick", deviceId, log, false);
+                await Task.Delay(100);
 
                 // Click vào button thứ hai (nếu có)
-                await ClickRegion("CombatBoostsClick2", deviceId, log);
-                await Task.Delay(500);
+                await ClickRegion("CombatBoostsClick2", deviceId, log, false);
+                await Task.Delay(100);
 
                 log?.Invoke("Hoàn thành xử lý CombatBoosts");
             } catch (Exception ex) {
@@ -117,7 +124,7 @@ namespace LUDUS.Services {
             await ClickRegion("Lose", deviceId, log);
             await Task.Delay(500);
             await ClickRegion("Yes", deviceId, log);
-            await Task.Delay(500);
+           // await Task.Delay(500);
         }
 
         private async Task ClickRegion(string regionName, string deviceId, Action<string> log, bool verbose = true) {
@@ -223,6 +230,15 @@ namespace LUDUS.Services {
                             var sorted = list.OrderBy(c => Math.Abs((c.Index % GridCols) - centerCol) + Math.Abs((c.Index / GridCols) - centerRow)).ToList();
                             var first = sorted[0];
                             var second = sorted[1];
+                            
+                            // Tạo key để kiểm tra cặp đã thất bại chưa
+                            string mergeKey = $"{first.Index}-{second.Index}-{name}-{level}";
+                            if (_failedMergePairs.Contains(mergeKey))
+                            {
+                                log?.Invoke($"[MERGE-SKIP] Bỏ qua cặp đã thất bại: {name} lvl{level} {second.Index}->{first.Index}");
+                                continue;
+                            }
+                            
                             // Thực hiện swipe từ second vào first
                             var p1 = new System.Drawing.Point(
                                 first.CellRect.X + first.CellRect.Width / 2,
@@ -248,6 +264,8 @@ namespace LUDUS.Services {
                             }
                             if (!mergeSuccess) {
                                 log?.Invoke($"[MERGE-FAIL] Merge thất bại tại cell {second.Index}->{first.Index}, bỏ qua cặp này!");
+                                // Lưu cặp đã thất bại để tránh thử lại
+                                _failedMergePairs.Add(mergeKey);
                                 continue;
                             }
                             log?.Invoke($"Merged {name} lvl{level}: cell {second.Index}->{first.Index}");

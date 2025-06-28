@@ -50,7 +50,7 @@ namespace LUDUS {
                  _capSvc, _adb, _ocrSvc, _mergeService, xmlPath, templatesFolder, _screenSvc);
             
             _ludusAutoService = new LudusAutoService(
-                _adb, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _capSvc, _packageName
+                _adb, _devMgr, _appCtrl, _screenSvc, _pvpNav, _battleSvc, _capSvc, _packageName
             );
             _ludusAutoService.SetResultLogger(UpdateResultUI);
 
@@ -71,6 +71,14 @@ namespace LUDUS {
             btnOpenApp.Click += BtnOpenApp_Click;
             btnCloseApp.Click += BtnCloseApp_Click;
             btnStart.Click += BtnStart_Click;
+            
+            // Thêm event handler cho numLoseCount
+            numLoseCount.ValueChanged += (s, e) => {
+                if (_ludusAutoService != null)
+                {
+                    _ludusAutoService.UpdateLoseModeFromUI((int)numLoseCount.Value);
+                }
+            };
 
             // load devices
             LoadDevices();
@@ -148,11 +156,33 @@ namespace LUDUS {
         }
 
         private void BtnOpenApp_Click(object sender, EventArgs e) {
-            var dev = _devMgr.CurrentDevice;
-            if (dev != null && _appCtrl.Open(dev, _packageName))
-                Log("App opened.");
-            else
-                Log("Open app failed.");
+            try
+            {
+                Log("Đang khởi động LDPlayer...");
+                
+                // Đường dẫn mặc định của LDPlayer (có thể thay đổi theo cài đặt)
+                string ldPlayerPath = @"C:\LDPlayer\LDPlayer9\dnplayer.exe";
+                
+                // Kiểm tra xem LDPlayer đã được cài đặt chưa
+                if (!File.Exists(ldPlayerPath))
+                {
+                    // Thử đường dẫn khác
+                    ldPlayerPath = @"C:\Program Files (x86)\LDPlayer\LDPlayer9\dnplayer.exe";
+                    if (!File.Exists(ldPlayerPath))
+                    {
+                        Log("Không tìm thấy LDPlayer. Vui lòng kiểm tra đường dẫn cài đặt.");
+                        return;
+                    }
+                }
+                
+                // Khởi động LDPlayer
+                System.Diagnostics.Process.Start(ldPlayerPath);
+                Log("Đã khởi động LDPlayer. Vui lòng chờ giả lập khởi động hoàn tất.");
+            }
+            catch (Exception ex)
+            {
+                Log($"Lỗi khi khởi động LDPlayer: {ex.Message}");
+            }
         }
 
         private void BtnCloseApp_Click(object sender, EventArgs e) {
@@ -195,17 +225,29 @@ namespace LUDUS {
                 {
                     richTextBoxResult.AppendText($"{resultLine}{Environment.NewLine}");
                     richTextBoxResult.ScrollToCaret();
-                    lblWin.Text = $"Thắng: {_ludusAutoService.WinCount}";
-                    lblLose.Text = $"Thua: {_ludusAutoService.LoseCount}";
+                    UpdateWinLoseLabels();
                 }));
             }
             else
             {
                 richTextBoxResult.AppendText($"{resultLine}{Environment.NewLine}");
                 richTextBoxResult.ScrollToCaret();
-                lblWin.Text = $"Thắng\n{_ludusAutoService.WinCount}";
-                lblLose.Text = $"Thua:\n{_ludusAutoService.LoseCount}";
+                UpdateWinLoseLabels();
             }
+        }
+
+        private void UpdateWinLoseLabels()
+        {
+            lblWin.Text = $"Thắng\n{_ludusAutoService.WinCount}";
+            
+            // Luôn cập nhật numLoseCount để hiển thị số trận thua còn lại
+            int remainingLose = _ludusAutoService.RemainingLoseCount;
+            if (numLoseCount.Value != remainingLose)
+            {
+                numLoseCount.Value = remainingLose;
+            }
+            
+            lblLose.Text = $"Thua\n{_ludusAutoService.LoseCount}";
         }
 
         // Đảm bảo dừng shell khi đóng form
