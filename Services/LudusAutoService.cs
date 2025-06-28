@@ -195,6 +195,7 @@ namespace LUDUS.Logic
                                 }
                             }
                             await Task.Delay(1000, cancellationToken);
+                            _battleSvc.ClickCoin(deviceId, 5, log);
                             await _battleSvc.ClickEndRound(deviceId, log);
                             await Task.Delay(3000, cancellationToken);
                             
