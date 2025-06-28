@@ -127,10 +127,6 @@ namespace LUDUS {
                 await _ludusAutoService.RunAsync(deviceId, _ocrSvc.Recognize, Log, _cancellationTokenSource.Token);
                 Log("Auto service finished gracefully.");
             }
-            catch (OperationCanceledException)
-            {
-                Log("Auto service was stopped by the user.");
-            }
             catch (Exception ex)
             {
                 Log($"An error occurred: {ex.Message}");

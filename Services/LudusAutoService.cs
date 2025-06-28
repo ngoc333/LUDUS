@@ -366,7 +366,9 @@ namespace LUDUS.Logic
                             }
                             break;
                     }
-                }
+                } catch (OperationCanceledException) {
+                    log("Auto service was stopped by the user.");
+                } 
                 catch (Exception ex)
                 {
                     log($"❌ Lỗi trong quá trình chạy: {ex.Message}");
