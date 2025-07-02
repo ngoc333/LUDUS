@@ -135,15 +135,26 @@ namespace LUDUS {
 
             _adb.StartShell(deviceId); // Khởi tạo persistent shell khi start
 
+            RESTART_AUTO:
             try
             {
                 Log("Starting auto service...");
                 await _ludusAutoService.RunAsync(deviceId, _ocrSvc.Recognize, Log, _cancellationTokenSource.Token);
                 Log("Auto service finished gracefully.");
             }
+            catch (OperationCanceledException)
+            {
+                Log("Auto service stopped by user.");
+            }
             catch (Exception ex)
             {
                 Log($"An error occurred: {ex.Message}");
+                if (_isAutoRunning && (_cancellationTokenSource == null || !_cancellationTokenSource.IsCancellationRequested))
+                {
+                    Log("Tự động khởi động lại auto service sau lỗi...");
+                    await Task.Delay(3000);
+                    goto RESTART_AUTO;
+                }
             }
             finally
             {
@@ -198,9 +209,6 @@ namespace LUDUS {
                 else
                 {
                     Log("❌ Không tìm thấy thiết bị nào. Vui lòng kiểm tra:");
-                    Log("   - LDPlayer đã khởi động chưa?");
-                    Log("   - ADB đã được cài đặt và hoạt động chưa?");
-                    Log("   - Có thể thử khởi động lại LDPlayer.");
                 }
             }
             catch (Exception ex)

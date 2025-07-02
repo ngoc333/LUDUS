@@ -98,6 +98,7 @@
     <Compile Include="Services\LudusAutoService.cs" />
     <Compile Include="Services\PvpNavigationService.cs" />
     <Compile Include="Services\ScreenCaptureService.cs" />
+    <Compile Include="Utils\BattleAnalyzerUtils.cs" />
     <Compile Include="Utils\ImageCompare.cs" />
     <Compile Include="Utils\RegionLoader.cs" />
     <Compile Include="Utils\Win32.cs" />
