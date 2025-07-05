@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Regions>
   <ScreenRegions>
-	<Region Name="Loading"    		X="375"   Y="1377" 		Width="152" 	Height="40" />
-    <Region Name="Main"       		X="42"    Y="7" 		Width="85" 		Height="73" />
+	<Region Name="Loading"    		X="415"   Y="218" 		Width="31" 	Height="59" />
+    <Region Name="Main"       		X="266"    Y="1053" 		Width="356" 		Height="67" />
     <Region Name="WaitPvp"      	X="390"   Y="800" 		Width="122" 	Height="65" />
-    <Region Name="ToBattle"     	X="89"    Y="1458" 		Width="64" 		Height="59" />
-    <Region Name="EndBattle"    	X="400"   Y="593" 		Width="169" 	Height="58" />
+	<Region Name="CombatBoosts"     X="295"   Y="245" 		Width="168" 	Height="61" />
+    <Region Name="EndBattle"    	X="407"   Y="815" 		Width="93" 	Height="69" />
+	<Region Name="EndBattle2"    	X="402"   Y="592" 		Width="165" 	Height="61" />
     <Region Name="WaitOppenent" 	X="275"   Y="775" 		Width="419" 	Height="48" />
     <Region Name="Pvp"       		X="439"   Y="1415" 		Width="20" 		Height="35" />
-    <Region Name="CombatBoosts"     X="304"   Y="262" 		Width="303" 	Height="40" />
     <Region Name="ValorChest"       X="275"   Y="648" 		Width="337" 	Height="66"/>
-	
+	<Region Name="ToBattle"     	X="79"    Y="1451" 		Width="82" 		Height="68" />
   </ScreenRegions>
 	<MainScreen>
 		<Region Name="BattleClick"       X="454"   Y="1535" Width="1" Height="1" />
@@ -21,7 +21,7 @@
     <Region Name="C1"         X="46"  Y="854"  Width="160" Height="112" />
     <Region Name="EmptyCoin"         X="459"  Y="1520"  Width="30" Height="33" />
 	<Region Name="Coin"         X="459"  Y="1520"  Width="30" Height="33" />
-    <Region Name="Battle"         X="782"  Y="1490"  Width="1" Height="1" />
+    <Region Name="ToBattle"         X="780"  Y="1450"  Width="1" Height="1" />
 	<Region Name="SpellsClick"         X="120"  Y="1490"  Width="1" Height="1" />
 	<Region Name="CastClick"         X="440"  Y="1140"  Width="1" Height="1" />
 	<Region Name="Spell1"         X="140"  Y="1300"  Width="1" Height="1" />
@@ -32,15 +32,15 @@
 	<Region Name="Life1"         X="19"  Y="124"  Width="261" Height="56" />
 	<Region Name="Life2"         X="625"  Y="128"  Width="256" Height="53" />
 	<Region Name="ClamContinue"         X="293"  Y="1142"  Width="1" Height="1" />
-	<Region Name="CombatBoostsClick"         X="449"  Y="890"  Width="1" Height="1" />
-	<Region Name="CombatBoostsClick2"         X="450"  Y="1100"  Width="1" Height="1" />
+	<Region Name="CombatBoostsClick"         X="380"  Y="510"  Width="1" Height="1" />
+	<Region Name="CombatBoostsClick2"         X="450"  Y="1088"  Width="1" Height="1" />
 	<Region Name="Lose"         X="377"  Y="141"  Width="1" Height="1" />
 	<Region Name="Yes"         X="583"  Y="936"  Width="1" Height="1" />
   </MySideCell>
 
   <HeroInfo>
     <Region Name="Name"        X="354" Y="64"   Width="358" Height="42"  />
-    <Region Name="LV"          X="280" Y="50"  Width="60"  Height="55"  />
+    <Region Name="LV"          X="298" Y="65"   Width="22" Height="24"  />
     <Region Name="BuffPattern" X="285" Y="166" Width="122" Height="100" />
 	<Region Name="HeroCheck"    X="750" Y="80" Width="20" Height="25" />
   </HeroInfo>
