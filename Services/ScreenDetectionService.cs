@@ -34,22 +34,10 @@ namespace LUDUS.Services {
                         continue;
                     }
 
-                    // 1. Thử template screen
-                    var regions = RegionLoader.LoadPresetRegions(_regionsXmlPath)
-                                              .Where(r => r.Group == "ScreenRegions");
-                    foreach (var region in regions) {
-                        string name = region.Name;
-                        Rectangle rect = region.Rect;
-                        using (var crop = screenshot.Clone(rect, screenshot.PixelFormat)) {
-                            string tplPath = Path.Combine(_templateBasePath, "Screen", name + ".png");
-                            if (!File.Exists(tplPath))
-                                continue;
-                            using (var tpl = new Bitmap(tplPath)) {
-                                if (ImageCompare.AreSame(crop, tpl)) {
-                                    return name;
-                                }
-                            }
-                        }
+                    // 1. Thử template screen với OpenCV
+                    string screenResult = DetectScreenWithOpenCv(screenshot, log);
+                    if (!string.IsNullOrEmpty(screenResult)) {
+                        return screenResult;
                     }
 
                     // 2. Nếu chưa detect được, thử detect + tap button
@@ -62,6 +50,42 @@ namespace LUDUS.Services {
                 }
             }
             return "unknown";
+        }
+
+        // Detect screen via OpenCV template matching
+        private string DetectScreenWithOpenCv(Bitmap bmpScreenshot, Action<string> log) {
+            using (var mat0 = BitmapConverter.ToMat(bmpScreenshot))
+            using (var mat = new Mat()) {
+                Cv2.CvtColor(mat0, mat, ColorConversionCodes.BGRA2BGR);
+
+                var regions = RegionLoader.LoadPresetRegions(_regionsXmlPath)
+                                          .Where(r => r.Group == "ScreenRegions")
+                                          .OrderBy(r => r.Name);
+                
+                foreach (var region in regions) {
+                    string name = region.Name;
+                    Rectangle rect = region.Rect;
+                    
+                    // Crop region từ screenshot
+                    using (var cropMat = new Mat(mat, new OpenCvSharp.Rect(rect.X, rect.Y, rect.Width, rect.Height))) {
+                        string tplPath = Path.Combine(_templateBasePath, "Screen", name + ".png");
+                        if (!File.Exists(tplPath))
+                            continue;
+                            
+                        using (var tplMat = Cv2.ImRead(tplPath, ImreadModes.Color))
+                        using (var result = new Mat()) {
+                            Cv2.MatchTemplate(cropMat, tplMat, result, TemplateMatchModes.CCoeffNormed);
+                            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
+                            
+                            if (maxVal >= MatchThreshold) {
+                                log?.Invoke($"Screen detected: {name} (confidence: {maxVal:F3})");
+                                return name;
+                            }
+                        }
+                    }
+                }
+                return null;
+            }
         }
 
         // Detect and tap button via OpenCV

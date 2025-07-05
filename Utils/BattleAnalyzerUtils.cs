@@ -5,10 +5,93 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using LUDUS.Services;
+using OpenCvSharp;
+using OpenCvSharp.Extensions;
 
 namespace LUDUS.Utils {
     public static class BattleAnalyzerUtils {
-        public static bool IsEmptyCell(Bitmap bmp, Action<string> log) {
+        /// <summary>
+        /// Kiểm tra một vùng nhỏ trong bitmap có phải là stone (dark gray) không.
+        /// </summary>
+        public static bool IsStone(Bitmap bitmap)
+        {
+            Mat mat = null;
+            Mat roi = null;
+            Mat gray = null;
+            Mat mask = null;
+
+            try
+            {
+                // Convert Bitmap to Mat (BGR)
+                mat = BitmapConverter.ToMat(bitmap);
+                Cv2.CvtColor(mat, mat, ColorConversionCodes.BGRA2BGR);
+
+                // Crop region at (114, 80) with size (32, 26)
+                var rect = new Rect(114, 80, 32, 26);
+                if (rect.Right > mat.Width || rect.Bottom > mat.Height)
+                    return false; // region out of bounds
+
+                roi = new Mat(mat, rect);
+                gray = new Mat();
+                Cv2.CvtColor(roi, gray, ColorConversionCodes.BGR2GRAY);
+
+                // Tính tỷ lệ white pixels (>=230)
+                int whiteCount = 0;
+                int total = roi.Rows * roi.Cols;
+                for (int y = 0; y < roi.Rows; y++)
+                {
+                    for (int x = 0; x < roi.Cols; x++)
+                    {
+                        if (gray.At<byte>(y, x) >= 230)
+                            whiteCount++;
+                    }
+                }
+                double whiteRatio = (double)whiteCount / total;
+                if (whiteRatio > 0.15)
+                    return false; // Nếu vùng crop có quá nhiều trắng thì không phải stone
+
+                // Create mask to exclude white pixels (brightness >= 230)
+                mask = gray.LessThan(230);
+
+                double sumR = 0, sumG = 0, sumB = 0;
+                int count = 0;
+
+                for (int y = 0; y < roi.Rows; y++)
+                {
+                    for (int x = 0; x < roi.Cols; x++)
+                    {
+                        if (mask.At<byte>(y, x) == 0)
+                            continue;
+
+                        Vec3b color = roi.At<Vec3b>(y, x);
+                        sumB += color.Item0;
+                        sumG += color.Item1;
+                        sumR += color.Item2;
+                        count++;
+                    }
+                }
+
+                if (count == 0)
+                    return false;
+
+                double avgR = sumR / count;
+                double avgG = sumG / count;
+                double avgB = sumB / count;
+                double brightness = (avgR + avgG + avgB) / 3.0;
+
+                // Check condition for "dark gray" region
+                return brightness < 90 && avgB > avgG && avgG > avgR;
+            }
+            finally
+            {
+                if (mat != null) mat.Dispose();
+                if (roi != null) roi.Dispose();
+                if (gray != null) gray.Dispose();
+                if (mask != null) mask.Dispose();
+            }
+        }
+
+        public static bool IsEmptyCell(Bitmap bmp, Action<string> log, bool disposeBitmap = true) {
             try {
                 const int PATCH = 20, TH = 20;
                 int w = bmp.Width, h = bmp.Height;
@@ -22,11 +105,11 @@ namespace LUDUS.Utils {
                         minB = Math.Min(minB, gray);
                         maxB = Math.Max(maxB, gray);
                         if (maxB - minB >= TH) {
-                            bmp.Dispose();
+                            if (disposeBitmap) bmp.Dispose();
                             return false;
                         }
                     }
-                bmp.Dispose();
+                if (disposeBitmap) bmp.Dispose();
                 return true;
             } catch (Exception ex) {
                 log?.Invoke($"[BattleAnalyzerUtils.IsEmptyCell] Lỗi: {ex.Message}");
@@ -37,10 +120,23 @@ namespace LUDUS.Utils {
         public static string TryMatchTemplate(Bitmap crop, string folderPath, Action<string> log) {
             try {
                 if (!Directory.Exists(folderPath)) return null;
-                foreach (var file in Directory.GetFiles(folderPath, "*.png")) {
-                    using (var tpl = new Bitmap(file)) {
-                        if (ImageCompare.AreSame(crop, tpl))
-                            return Path.GetFileNameWithoutExtension(file);
+                
+                using (var mat0 = BitmapConverter.ToMat(crop))
+                using (var mat = new Mat()) {
+                    Cv2.CvtColor(mat0, mat, ColorConversionCodes.BGRA2BGR);
+                    
+                    foreach (var file in Directory.GetFiles(folderPath, "*.png")) {
+                        string templateName = Path.GetFileNameWithoutExtension(file);
+                        using (var tplMat = Cv2.ImRead(file, ImreadModes.Color))
+                        using (var result = new Mat()) {
+                            Cv2.MatchTemplate(mat, tplMat, result, TemplateMatchModes.CCoeffNormed);
+                            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
+                            
+                            if (maxVal >= 0.95) { // Sử dụng threshold tương tự như ScreenDetectionService
+                              //  log?.Invoke($"[TryMatchTemplate] Matched: {templateName} (confidence: {maxVal:F3})");
+                                return templateName;
+                            }
+                        }
                     }
                 }
                 return null;
@@ -90,11 +186,14 @@ namespace LUDUS.Utils {
                     for (int i = 0; i < cellRects.Count; i++) {
                         var rect = cellRects[i];
                         using (var bmpCell = screenshot.Clone(rect, screenshot.PixelFormat)) {
-                            if (IsEmptyCell(bmpCell, log)) continue;
+                            if (IsEmptyCell(bmpCell, log, false))
+                                continue;
+                            // Không kiểm tra IsStone nữa
+                            bmpCell.Dispose();
                         }
                         // Click để lấy thông tin hero
                         var px = rect.X + rect.Width / 2;
-                        var py = rect.Y + rect.Height / 2;
+                        var py = rect.Y + rect.Height / 2 - 10;
                         adb.RunShellPersistent($"input tap {px} {py}");
                         await Task.Delay(100);
                         using (var newScreenshot = capture.Capture(deviceId) as Bitmap) {
@@ -188,7 +287,7 @@ namespace LUDUS.Utils {
                                                                    // Kiểm tra lại ô nguồn (second.Index) có trống không
                                             using (var checkScreenshot = capture.Capture(deviceId) as Bitmap)
                                             using (var bmpSource = checkScreenshot.Clone(second.CellRect, checkScreenshot.PixelFormat)) {
-                                                if (IsEmptyCell(bmpSource, log)) {
+                                                if (IsEmptyCell(bmpSource, log, true)) {
                                                     mergeSuccess = true;
                                                     break;
                                                 }

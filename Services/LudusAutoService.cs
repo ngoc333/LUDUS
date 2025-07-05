@@ -27,8 +27,10 @@ namespace LUDUS.Logic {
         private bool _loseMode = false;
         private int _targetLoseCount = 0;
         private bool _shouldSurrenderForTotalLose = false;
+        private bool _isPVP = false;
         private int _restartCount = 0;
         private const int MaxRestartPerSession = 2;
+        private int _surrenderAfterWinCount = 0; // Đếm số trận cần bỏ cuộc sau khi thắng
 
         public LudusAutoService(
             AdbService adb,
@@ -81,18 +83,18 @@ namespace LUDUS.Logic {
         public async Task RunAsync(string deviceId, Func<Bitmap, string> ocrFunc, Action<string> log, CancellationToken cancellationToken) {
             while (!cancellationToken.IsCancellationRequested) {
 
-                if (cancellationToken.IsCancellationRequested) break;
+                //if (cancellationToken.IsCancellationRequested) break;
+                //if (!EnsureAppRunning(deviceId, log)) {
+                //    log("App is not running. Opening...");
+                //    _appCtrl.Open(deviceId, _packageName);
+                //    log("App opened. Waiting 45s for loading...");
+                //    await Task.Delay(45000, cancellationToken);
+                //    // After opening, we should re-check everything from the start.
+                //    continue;
+                //}
 
-                if (!EnsureAppRunning(deviceId, log)) {
-                    log("App is not running. Opening...");
-                    _appCtrl.Open(deviceId, _packageName);
-                    log("App opened. Waiting 45s for loading...");
-                    await Task.Delay(45000, cancellationToken);
-                    // After opening, we should re-check everything from the start.
-                    continue;
-                }
 
-                if (cancellationToken.IsCancellationRequested) break;
+                // if (cancellationToken.IsCancellationRequested) break;
 
                 //if (_screenSvc.IsScreenLoadingByOcr(deviceId, ocrFunc, log))
                 //{
@@ -112,28 +114,52 @@ namespace LUDUS.Logic {
                         log("Main screen detected. Navigating to PVP.");
 
                         // Kiểm tra và bật chế độ thua trước khi vào PVP
-                        if (_loseMode && _targetLoseCount > 0) {
-                            log($"Chế độ thua đang bật: {_targetLoseCount} lượt còn lại");
-                            _shouldSurrenderForTotalLose = true;
-                        }
+                        if (_loseMode && _targetLoseCount > 0) 
+                           { 
 
-                        _pvpNav.GoToPvp(deviceId, log);
-                        await Task.Delay(3000, cancellationToken);
+                                log($"Chế độ thua đang bật: {_targetLoseCount} lượt còn lại");
+                            log("Navigating to PVP.");
+                            _shouldSurrenderForTotalLose = true;
+                            _isPVP = true;
+                            _pvpNav.GoToPvp(deviceId, log);
+                            await Task.Delay(1000, cancellationToken);
+                            break;
+
+                        }
+                        if (_surrenderAfterWinCount > 0 || _shouldSurrenderNext || _shouldSurrenderForTotalLose) {
+
+                            log($"Chế độ thua đang bật: {_targetLoseCount} lượt còn lại");
+                            //_shouldSurrenderForTotalLose = true;
+                            log("Navigating to PVP.");
+                            _isPVP = true;
+                            _pvpNav.GoToPvp(deviceId, log);
+                            await Task.Delay(1000, cancellationToken);
+                            break;
+
+                        }
+                        //log("Navigating to Astra.");
+                        _isPVP = false;
+                        _pvpNav.GoToAstra(deviceId, log);
+                        await Task.Delay(1000, cancellationToken);
                         break;
                     case "Loading":
                         log("Loading screen detected");
-                        await Task.Delay(3000, cancellationToken);
+                        await Task.Delay(5000, cancellationToken);
                         break;
                     case "ToBattle":
                     case "Battle":
-                        if (_shouldSurrenderNext || _shouldSurrenderForTotalLose) {
-                            log("Sẽ tự động bỏ cuộc trận này!");
-                            _isSurrendered = true;
-                            await _battleSvc.ClickLoseAndYes(deviceId, log);
-                            _battleStartTime = DateTime.Now; // Reset thời gian bắt đầu khi vào round 1
-                            await Task.Delay(3000, cancellationToken);
-                            break;
+                        if (_isPVP) {
+                            if (_surrenderAfterWinCount > 0 || _shouldSurrenderNext || _shouldSurrenderForTotalLose) {
+                                log("Sẽ tự động bỏ cuộc trận này!");
+                                _isSurrendered = true;
+                                await _battleSvc.ClickLoseAndYes(deviceId, log);
+                                _battleStartTime = DateTime.Now; // Reset thời gian bắt đầu khi vào round 1
+                                await Task.Delay(1000, cancellationToken);
+                                if (_surrenderAfterWinCount > 0) _surrenderAfterWinCount--; // Giảm số lần cần bỏ cuộc sau khi thắng
+                                break;
+                            }
                         }
+                        
 
                         // Reset flag surrender khi bắt đầu trận mới
                         _isSurrendered = false;
@@ -172,10 +198,10 @@ namespace LUDUS.Logic {
                                 }
                             }
                         }
-                        await Task.Delay(1000, cancellationToken);
+                        await Task.Delay(500, cancellationToken);
                         await _battleSvc.ClickCoin(deviceId, 5, log);
                         await _battleSvc.ClickEndRound(deviceId, log);
-                        await Task.Delay(3000, cancellationToken);
+                        await Task.Delay(500, cancellationToken);
 
                         // Kiểm tra thêm 1 lần nữa sau khi click EndRound
                         //if (await _battleSvc.IsInBattleScreen(deviceId, log))
@@ -199,6 +225,7 @@ namespace LUDUS.Logic {
                         //}
                         break;
 
+                    case "EndBattle2":
                     case "EndBattle":
                         _lastDefaultScreenTime = DateTime.MinValue;
                         _battleEndTime = DateTime.Now;
@@ -206,8 +233,8 @@ namespace LUDUS.Logic {
 
                         if (isWin) {
                             _winCount++;
-                            // Chức năng thua sau trận PVP thắng (giữ nguyên)
-                            _shouldSurrenderNext = true;
+                            // Sau mỗi trận thắng, bỏ cuộc 2 trận tiếp theo
+                            _surrenderAfterWinCount = 2;
                         }
                         else {
                             // Chỉ tính thua nếu không phải surrender (thua thật sự)
@@ -266,17 +293,17 @@ namespace LUDUS.Logic {
                         SaveResultLogToFile(timeLog);
                         _battleStartTime = DateTime.MinValue;
                         _isSurrendered = false; // Reset flag surrender
-                        await Task.Delay(3000, cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
                         break;
 
                     case "ValorChest":
                         await _battleSvc.ClickClamContinue(deviceId, log);
-                        await Task.Delay(3000, cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
                         break;
                     case "CombatBoosts":
                         log("Phát hiện màn hình CombatBoosts - đang xử lý...");
                         await _battleSvc.ClickCombatBoosts(deviceId, log);
-                        await Task.Delay(3000, cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
 
                         // Kiểm tra xem đã thoát khỏi CombatBoosts chưa
                         if (!_screenSvc.IsCombatBoostsScreen(deviceId, log)) {
@@ -304,15 +331,23 @@ namespace LUDUS.Logic {
                         await Task.Delay(3000, cancellationToken);
                         break;
 
-                    case "unknown":
-                        log("Unknown screen detected. Capturing screenshot for analysis...");
-                        await SaveUnknownScreenScreenshot(deviceId, log);
-                        log("Restarting app.");
-                        await RestartAppSafe(deviceId, log, cancellationToken);
-                        _lastDefaultScreenTime = DateTime.MinValue;
-                        break;
+                    //case "unknown":
+                    //    log("Unknown screen detected. Capturing screenshot for analysis...");
+                    //    await SaveUnknownScreenScreenshot(deviceId, log);
+                    //    log("Restarting app.");
+                    //   // await RestartAppSafe(deviceId, log, cancellationToken);
+                    //    _lastDefaultScreenTime = DateTime.MinValue;
+                    //    break;
 
                     default:
+                        if (!EnsureAppRunning(deviceId, log)) {
+                            log("App is not running. Opening...");
+                            _appCtrl.Open(deviceId, _packageName);
+                            log("App opened. Waiting 45s for loading...");
+                            await Task.Delay(45000, cancellationToken);
+                            // After opening, we should re-check everything from the start.
+                            continue;
+                        }
                         if (_lastDefaultScreenTime == DateTime.MinValue) {
                             _lastDefaultScreenTime = DateTime.UtcNow;
                             log($"Unhandled screen: '{screen}'. Starting 90s timeout.");

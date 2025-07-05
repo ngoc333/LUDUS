@@ -73,7 +73,7 @@ namespace LUDUS.Services {
 
             await ClickRegion("CastClick", deviceId, log, false);
             log?.Invoke($"Spell {round}");
-            //await Task.Delay(1000); // Wait for spell animation
+            if (round == 2 ) await Task.Delay(3000); // Wait for spell animation
         }
 
         public async Task ClickCoin(string deviceId, int count, Action<string> log) {
