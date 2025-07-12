@@ -60,7 +60,7 @@ namespace LUDUS.Services {
                 if (!_shellReady || _shellProc == null || _shellProc.HasExited)
                     throw new InvalidOperationException("Shell chưa được khởi tạo hoặc đã dừng.");
                 // Sinh một marker để biết đâu là kết thúc output
-                string marker = $"__LUDUS_DONE_{Guid.NewGuid().ToString("N")}";
+                string marker = $"__LUDUS_DONE_{Guid.NewGuid():N}";
                 _shellStdin.WriteLine(cmd);
                 _shellStdin.WriteLine($"echo {marker}");
                 _shellStdin.Flush();

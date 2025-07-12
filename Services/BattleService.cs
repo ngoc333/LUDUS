@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using LUDUS.Services;
 using LUDUS.Utils;
 
 namespace LUDUS.Services {
@@ -17,16 +15,8 @@ namespace LUDUS.Services {
         public Rectangle CellRect { get; set; }
     }
 
-    public class HeroInfo {
-        public int Row { get; set; }
-        public int Col { get; set; }
-        public string Name { get; set; }
-        public int Level { get; set; }
-        public Rectangle CellRect { get; set; }
-    }
-
     // Service to analyze battle cells
-    public class BattleAnalyzerService {
+    public class BattleService {
         private readonly ScreenCaptureService _capture;
         private readonly AdbService _adb;
         private readonly HeroNameOcrService _ocr;
@@ -40,7 +30,16 @@ namespace LUDUS.Services {
         // Lưu trữ những cặp merge đã thất bại để tránh thử lại
         private HashSet<string> _failedMergePairs = new HashSet<string>();
 
-        public BattleAnalyzerService(
+        // Lưu trữ trạng thái bàn cờ suốt trận
+        private readonly List<CellResult> _boardState = new List<CellResult>();
+
+        // Reset trạng thái bàn cờ khi bắt đầu trận mới hoặc kết thúc trận
+        public void ResetBoardState() {
+            _boardState.Clear();
+            _failedMergePairs.Clear();
+        }
+
+        public BattleService(
             ScreenCaptureService captureService,
             AdbService adbService,
             HeroNameOcrService ocrService,
@@ -84,14 +83,26 @@ namespace LUDUS.Services {
             }
         }
 
-        public async Task<bool> IsInBattleScreen(string deviceId, Action<string> log) {
-            string screen = _screenDetectSvc.DetectScreen(deviceId, log);
+        public async Task<bool> IsInBattleScreen(string deviceId, Action<string> log, CancellationToken ct) {
+            string screen = await _screenDetectSvc.DetectScreenAsync(deviceId, log, ct);
             // In the new logic, "ToBattle" is named "Battle"
             return screen == "Battle" || screen == "ToBattle";
         }
 
         public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log) {
             var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log);
+            if (merged) log?.Invoke("Merge ✓");
+            return merged;
+        }
+        
+        public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log, List<int> specificCells) {
+            var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log, specificCells);
+            if (merged) log?.Invoke("Merge ✓");
+            return merged;
+        }
+        
+        public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log, int currentRound) {
+            var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log, null, currentRound);
             if (merged) log?.Invoke("Merge ✓");
             return merged;
         }
@@ -103,6 +114,7 @@ namespace LUDUS.Services {
         public async Task ClickEndRound(string deviceId, Action<string> log) {
             // The button to end the round is named "Battle" in regions.xml
             await ClickRegion("ToBattle", deviceId, log);
+            await ClickRegion("ToBattleOk", deviceId, log);
         }
 
         public async Task ClickClamContinue(string deviceId, Action<string> log) {
@@ -152,32 +164,87 @@ namespace LUDUS.Services {
             await Task.CompletedTask;
         }
 
-        private async Task<(bool merged, int heroCount)> AnalyzeAndMergeWithCount(string deviceId, Action<string> log) {
+        private async Task<(bool merged, int heroCount)> AnalyzeAndMergeWithCount(string deviceId, Action<string> log, List<int> specificCells = null, int currentRound = 1) {
             const int rows = 4;
             // Sử dụng các hàm tiện ích từ BattleAnalyzerUtils
             var cellRects = BattleAnalyzerUtils.GenerateCellRects(_regions, rows, GridCols, log);
             var (rectCheck, rectName, rectLv) = BattleAnalyzerUtils.GetHeroInfoRects(_regions, log);
 
-            // 1. Quét bàn cờ 1 lần duy nhất
-            List<CellResult> results = await BattleAnalyzerUtils.ScanBoardAsync(
-                _capture, _adb, _ocr, _templateBasePath, _regions, deviceId, cellRects, rectCheck, rectName, rectLv, log);
-
-            if (results.Count < 2) {
-                return (false, results.Count);
+            // 1. Xác định cells cần scan
+            List<int> cellsToScan;
+            if (currentRound == 1 || _boardState.Count == 0) {
+                // Trận mới hoặc chưa có dữ liệu - quét toàn bộ 20 ô
+                cellsToScan = specificCells ?? Enumerable.Range(0, cellRects.Count).ToList();
+                log?.Invoke($"[ROUND-{currentRound}] Scan toàn bộ {cellsToScan.Count} cells");
+            } else {
+                // Round tiếp theo - chỉ quét ô trống, stone, fail
+                cellsToScan = GetCellsToRescan(_boardState, cellRects.Count, log);
+                if (cellsToScan.Count == 0) {
+                    log?.Invoke($"[ROUND-{currentRound}] Không có ô nào cần rescan, dùng dữ liệu cũ");
+                } else {
+                    log?.Invoke($"[ROUND-{currentRound}] Rescan {cellsToScan.Count} cells: [{string.Join(", ", cellsToScan)}]");
+                }
             }
 
-            // 2. Merge liên tục trong bộ nhớ, ưu tiên vị trí trung tâm
+            // 2. Scan và cập nhật board state
+            var scanResults = await BattleAnalyzerUtils.ScanBoardAsync(
+                _capture, _adb, _ocr, _templateBasePath, _regions, deviceId, cellRects, rectCheck, rectName, rectLv, log, cellsToScan);
+
+            // Cập nhật _boardState với kết quả scan mới
+            foreach (var cell in scanResults) {
+                _boardState.RemoveAll(c => c.Index == cell.Index);
+                _boardState.Add(cell);
+            }
+
+            // Kiểm tra có đủ cells để merge không
+            if (_boardState.Count < 2) {
+                return (false, _boardState.Count);
+            }
+
+            // 3. Merge liên tục trong bộ nhớ, ưu tiên vị trí trung tâm
             bool anyMergeHappened = false;
             bool didMerge;
             do {
-                didMerge = await BattleAnalyzerUtils.TryMergeAsync(
-                    _capture, _adb, _templateBasePath, deviceId, _failedMergePairs, GridCols, results, rows, log,
+                didMerge = await BattleMergeUtils.TryMergeAsync(
+                    _capture, _adb, _templateBasePath, deviceId, _failedMergePairs, GridCols, _boardState, rows, log,
                     (name, count, logger) => ClickCoin(deviceId, count, logger));
                 if (didMerge)
                     anyMergeHappened = true;
             } while (didMerge);
 
-            return (anyMergeHappened, results.Count);
+            return (anyMergeHappened, _boardState.Count);
         }
+        
+        private List<int> GetCellsToRescan(List<CellResult> currentResults, int totalCells, Action<string> log) {
+            var cellsToRescan = new List<int>();
+            
+            // Tạo danh sách tất cả cells (0-19)
+            var allCells = Enumerable.Range(0, totalCells).ToList();
+            
+            // Lấy danh sách cells hiện tại có dữ liệu
+            var currentCellIndices = currentResults.Select(c => c.Index).ToList();
+            
+            // Tìm những ô trống (không có trong currentResults)
+            var emptyCells = allCells.Except(currentCellIndices).ToList();
+            
+            // Tìm những ô có Stone hoặc merge fail
+            var stoneAndFailedCells = currentResults
+                .Where(c => c.HeroName == "Stone" || c.Level == "-1" || 
+                           _failedMergePairs.Any(fp => fp.Contains(c.Index.ToString())))
+                .Select(c => c.Index)
+                .ToList();
+            
+            // Kết hợp danh sách
+            cellsToRescan.AddRange(emptyCells);
+            cellsToRescan.AddRange(stoneAndFailedCells);
+            cellsToRescan = cellsToRescan.Distinct().OrderBy(x => x).ToList();
+            
+            log?.Invoke($"[GetCellsToRescan] Empty cells: [{string.Join(", ", emptyCells)}]");
+            log?.Invoke($"[GetCellsToRescan] Stone/Failed cells: [{string.Join(", ", stoneAndFailedCells)}]");
+            log?.Invoke($"[GetCellsToRescan] Total cells to rescan: {cellsToRescan.Count}");
+            
+            return cellsToRescan;
+        }
+
     }
 }

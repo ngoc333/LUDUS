@@ -13,7 +13,7 @@ namespace LUDUS.Logic {
         private readonly AppController _appCtrl;
         private readonly ScreenDetectionService _screenSvc;
         private readonly PvpNavigationService _pvpNav;
-        private readonly BattleAnalyzerService _battleSvc;
+        private readonly BattleService _battleSvc;
         private readonly ScreenCaptureService _captureSvc;
         private readonly string _packageName;
         private DateTime _lastDefaultScreenTime = DateTime.MinValue;
@@ -21,6 +21,7 @@ namespace LUDUS.Logic {
         private int _loseCount = 0;
         private DateTime _battleStartTime;
         private DateTime _battleEndTime;
+        private DateTime _surrenderTime = DateTime.MinValue; // Thời điểm bỏ cuộc
         private Action<string> _resultLogger;
         private bool _shouldSurrenderNext = false;
         private bool _isSurrendered = false;
@@ -32,13 +33,77 @@ namespace LUDUS.Logic {
         private const int MaxRestartPerSession = 2;
         private int _surrenderAfterWinCount = 0; // Đếm số trận cần bỏ cuộc sau khi thắng
 
+        // Cài đặt win/lose để điều khiển hành vi bỏ cuộc
+        private int _winLoseWinCount = 0; // Số trận thắng trước khi bỏ cuộc
+        private int _winLoseLoseCount = 0; // Số trận bỏ cuộc sau khi thắng
+        private int _currentWinStreak = 0; // Đếm chuỗi thắng hiện tại
+
+        // Theo dõi màn hình hiện tại để reset nếu hiển thị quá lâu
+        private string _currentScreenName = null;
+        private DateTime _currentScreenStartTime = DateTime.MinValue;
+
+        // --- Chế độ chính khi ở màn hình Main ---
+        private bool _preferPvp = false; // false = Astra, true = PVP
+
+        /// <summary>
+        /// Bật/tắt chế độ ưu tiên PVP (false = Astra)
+        /// </summary>
+        public void SetPreferPvp(bool enablePvp) {
+            _preferPvp = enablePvp;
+        }
+
+        // Định nghĩa các loại màn hình để tránh lặp string literal và lỗi chính tả
+        private enum ScreenType {
+            Main,
+            Loading,
+            ToBattle,
+            Battle,
+            EndBattle,
+            EndBattle2,
+            Chest,
+            CombatBoosts,
+            WaitPvp,
+            PVP,
+            Unknown
+        }
+
+        /// <summary>
+        /// Chuyển đổi chuỗi tên màn hình thành enum ScreenType (dùng switch-case C# 7.3 để tương thích .NET 4.8)
+        /// </summary>
+        private ScreenType ParseScreen(string screenName) {
+            switch (screenName) {
+                case "Main":
+                    return ScreenType.Main;
+                case "Loading":
+                    return ScreenType.Loading;
+                case "ToBattle":
+                    return ScreenType.ToBattle;
+                case "Battle":
+                    return ScreenType.Battle;
+                case "EndBattle":
+                    return ScreenType.EndBattle;
+                case "EndBattle2":
+                    return ScreenType.EndBattle2;
+                case "Chest":
+                    return ScreenType.Chest;
+                case "CombatBoosts":
+                    return ScreenType.CombatBoosts;
+                case "WaitPvp":
+                    return ScreenType.WaitPvp;
+                case "PVP":
+                    return ScreenType.PVP;
+                default:
+                    return ScreenType.Unknown;
+            }
+        }
+
         public LudusAutoService(
             AdbService adb,
             DeviceManager deviceManager,
             AppController appController,
             ScreenDetectionService screenDetectionService,
             PvpNavigationService pvpNav,
-            BattleAnalyzerService battleAnalyzerService,
+            BattleService battleAnalyzerService,
             ScreenCaptureService captureService,
             string packageName) {
             _adb = adb;
@@ -80,315 +145,134 @@ namespace LUDUS.Logic {
             SetLoseMode(targetLoseCount > 0, targetLoseCount);
         }
 
+        public void UpdateWinLoseSettings(int winCount, int loseCount) {
+            _winLoseWinCount = winCount;
+            _winLoseLoseCount = loseCount;
+            _resultLogger?.Invoke($"Cập nhật cài đặt Win/Lose: {winCount} thắng -> {loseCount} bỏ cuộc");
+        }
+
         public async Task RunAsync(string deviceId, Func<Bitmap, string> ocrFunc, Action<string> log, CancellationToken cancellationToken) {
             while (!cancellationToken.IsCancellationRequested) {
-
-                //if (cancellationToken.IsCancellationRequested) break;
-                //if (!EnsureAppRunning(deviceId, log)) {
-                //    log("App is not running. Opening...");
-                //    _appCtrl.Open(deviceId, _packageName);
-                //    log("App opened. Waiting 45s for loading...");
-                //    await Task.Delay(45000, cancellationToken);
-                //    // After opening, we should re-check everything from the start.
-                //    continue;
-                //}
-
-
-                // if (cancellationToken.IsCancellationRequested) break;
-
-                //if (_screenSvc.IsScreenLoadingByOcr(deviceId, ocrFunc, log))
-                //{
-                //    log("Loading screen detected. Waiting for it to finish...");
-                //    await WaitForLoading(deviceId, ocrFunc, log, cancellationToken);
-                //    // After loading, restart loop to detect the new screen.
-                //    continue;
-                //}
-
                 if (cancellationToken.IsCancellationRequested) break;
 
-                string screen = _screenSvc.DetectScreen(deviceId, log);
+                string screenName = await _screenSvc.DetectScreenAsync(deviceId, log);
 
+                // Kiểm tra xem màn hình có hiển thị quá 120s hay không
+                await CheckScreenTimeout(deviceId, screenName, log, cancellationToken);
+
+                ScreenType screen = ParseScreen(screenName);
+
+                // Tách xử lý thành các hàm riêng để code gọn hơn
                 switch (screen) {
-                    case "Main":
-                        _lastDefaultScreenTime = DateTime.MinValue;
-                        log("Main screen detected. Navigating to PVP.");
-
-                        // Kiểm tra và bật chế độ thua trước khi vào PVP
-                        if (_loseMode && _targetLoseCount > 0) 
-                           { 
-
-                                log($"Chế độ thua đang bật: {_targetLoseCount} lượt còn lại");
-                            log("Navigating to PVP.");
-                            _shouldSurrenderForTotalLose = true;
-                            _isPVP = true;
-                            _pvpNav.GoToPvp(deviceId, log);
-                            await Task.Delay(1000, cancellationToken);
-                            break;
-
-                        }
-                        if (_surrenderAfterWinCount > 0 || _shouldSurrenderNext || _shouldSurrenderForTotalLose) {
-
-                            log($"Chế độ thua đang bật: {_targetLoseCount} lượt còn lại");
-                            //_shouldSurrenderForTotalLose = true;
-                            log("Navigating to PVP.");
-                            _isPVP = true;
-                            _pvpNav.GoToPvp(deviceId, log);
-                            await Task.Delay(1000, cancellationToken);
-                            break;
-
-                        }
-                        //log("Navigating to Astra.");
-                        _isPVP = false;
-                        _pvpNav.GoToAstra(deviceId, log);
-                        await Task.Delay(1000, cancellationToken);
+                    case ScreenType.Main:
+                        await HandleMainScreen(deviceId, log, cancellationToken);
                         break;
-                    case "Loading":
-                        log("Loading screen detected");
-                        await Task.Delay(5000, cancellationToken);
+                    case ScreenType.Loading:
+                        await HandleLoadingScreen(log, cancellationToken);
                         break;
-                    case "ToBattle":
-                    case "Battle":
-                        if (_isPVP) {
-                            if (_surrenderAfterWinCount > 0 || _shouldSurrenderNext || _shouldSurrenderForTotalLose) {
-                                log("Sẽ tự động bỏ cuộc trận này!");
-                                _isSurrendered = true;
-                                await _battleSvc.ClickLoseAndYes(deviceId, log);
-                                _battleStartTime = DateTime.Now; // Reset thời gian bắt đầu khi vào round 1
-                                await Task.Delay(1000, cancellationToken);
-                                if (_surrenderAfterWinCount > 0) _surrenderAfterWinCount--; // Giảm số lần cần bỏ cuộc sau khi thắng
-                                break;
-                            }
-                        }
-                        
-
-                        // Reset flag surrender khi bắt đầu trận mới
-                        _isSurrendered = false;
-
-                        // Tính round từ lifeEmpty
-                        int calculatedRound = 1; // Giá trị mặc định
-                        RoundInfo roundInfo = null;
-
-                        roundInfo = await GetRoundInfoAndLog(deviceId, log);
-                        calculatedRound = roundInfo.CalculatedRound;
-                        // Nếu đang vào giữa trận mà _battleStartTime chưa có, thì gán luôn để tránh lặp EndBattle
-                        if (_battleStartTime == DateTime.MinValue && calculatedRound != 1) {
-                            _battleStartTime = DateTime.Now;
-                            log($"Đồng bộ _battleStartTime khi vào giữa trận: {calculatedRound}");
-                        }
-
-                        if (calculatedRound == 1) {
-                            _battleStartTime = DateTime.Now; // Reset thời gian bắt đầu khi vào round 1
-                            log($"Bắt đầu trận mới lúc: {_battleStartTime:HH:mm:ss}");
-                        }
-                        _lastDefaultScreenTime = DateTime.MinValue;
-
-                        log($">>> ROUND {calculatedRound} <<<");
-
-                        await _battleSvc.ClickSpell(deviceId, calculatedRound, log);
-
-                        if (calculatedRound == 1) {
-                            await _battleSvc.ClickCoin(deviceId, 20, log);
-                        }
-                        else {
-                            if (await _battleSvc.IsInBattleScreen(deviceId, log)) {
-                                await _battleSvc.ClickCoin(deviceId, 10, log);
-                                bool merged = await _battleSvc.AnalyzeAndMerge(deviceId, log);
-                                if (!merged) {
-                                    log("No merge");
-                                }
-                            }
-                        }
-                        await Task.Delay(500, cancellationToken);
-                        await _battleSvc.ClickCoin(deviceId, 5, log);
-                        await _battleSvc.ClickEndRound(deviceId, log);
-                        await Task.Delay(500, cancellationToken);
-
-                        // Kiểm tra thêm 1 lần nữa sau khi click EndRound
-                        //if (await _battleSvc.IsInBattleScreen(deviceId, log))
-                        //{
-                        //    log("Vẫn còn ở màn hình Battle, kiểm tra merge thêm 1 lần nữa...");
-                        //    bool merged = await _battleSvc.AnalyzeAndMerge(deviceId, log);
-                        //    if (merged)
-                        //    {
-                        //        log("Merge thành công, click EndRound lần cuối...");
-                        //        await _battleSvc.ClickEndRound(deviceId, log);
-                        //        await Task.Delay(3000, cancellationToken);
-                        //    }
-                        //    else
-                        //    {
-                        //        log("No merge, chuyển sang round tiếp theo");
-                        //    }
-                        //}
-                        //else
-                        //{
-                        //    log("Đã chuyển khỏi màn hình Battle");
-                        //}
+                    case ScreenType.ToBattle:
+                    case ScreenType.Battle:
+                        await HandleBattleScreen(deviceId, log, cancellationToken);
+                        break;
+                    case ScreenType.EndBattle2:
+                    case ScreenType.EndBattle:
+                        await HandleEndBattleScreen(deviceId, log, cancellationToken);
+                        break;
+                    case ScreenType.Chest:
+                        await HandleChestScreen(deviceId, log, cancellationToken);
+                        break;
+                    case ScreenType.CombatBoosts:
+                        await HandleCombatBoostsScreen(deviceId, log, cancellationToken);
+                        break;
+                    case ScreenType.WaitPvp:
+                    case ScreenType.PVP:
+                        await HandleWaitPvpScreen(deviceId, log, cancellationToken);
                         break;
 
-                    case "EndBattle2":
-                    case "EndBattle":
-                        _lastDefaultScreenTime = DateTime.MinValue;
-                        _battleEndTime = DateTime.Now;
-                        bool isWin = _screenSvc.DetectVictoryResult(deviceId, log);
-
-                        if (isWin) {
-                            _winCount++;
-                            // Sau mỗi trận thắng, bỏ cuộc 2 trận tiếp theo
-                            _surrenderAfterWinCount = 2;
-                        }
-                        else {
-                            // Chỉ tính thua nếu không phải surrender (thua thật sự)
-                            if (!_isSurrendered) {
-                                _loseCount++;
-
-                                // Chức năng thua theo tổng số lượt (mới) - chỉ tính thua thật sự
-                                if (_loseMode) {
-                                    _targetLoseCount--; // Giảm số trận thua còn lại
-                                    if (_targetLoseCount <= 0) {
-                                        log("Đã đạt đủ trận thua thật sự. Tắt chế độ thua liên tục.");
-                                        _loseMode = false;
-                                        _shouldSurrenderForTotalLose = false;
-                                        // Không reset _shouldSurrenderNext vì chức năng thua sau PVP thắng vẫn hoạt động
-                                    }
-                                    else {
-                                        log($"Thua thật sự, {_targetLoseCount} lượt còn lại.");
-                                        _shouldSurrenderForTotalLose = true; // Bỏ cuộc trận tiếp theo
-                                    }
-                                }
-                            }
-                            else {
-                                // Nếu đã surrender (bỏ cuộc chủ động), KHÔNG tính vào _loseCount
-                                // Nhưng vẫn tính vào tổng số lượt cho chức năng thua theo tổng số lượt
-                                if (_loseMode) {
-                                    _targetLoseCount--; // Vẫn giảm vì đây là tổng số lượt
-                                    if (_targetLoseCount <= 0) {
-                                        log("Đã đạt đủ tổng số lượt. Tắt chế độ thua liên tục.");
-                                        _loseMode = false;
-                                        _shouldSurrenderForTotalLose = false;
-                                    }
-                                    else {
-                                        log($"Đã bỏ cuộc, {_targetLoseCount} lượt còn lại.");
-                                        _shouldSurrenderForTotalLose = true;
-                                    }
-                                }
-                            }
-
-                            // Reset _shouldSurrenderNext sau khi thua (chức năng thua sau PVP thắng)
-                            _shouldSurrenderNext = false;
-                            // Không reset _shouldSurrenderForTotalLose vì nó được xử lý riêng trong logic trên
-                        }
-
-                        string result;
-                        if (_isSurrendered) {
-                            result = "Bỏ cuộc";
-                        }
-                        else {
-                            result = isWin ? "Thắng" : "Thua";
-                        }
-
-                        TimeSpan duration = (_battleStartTime != DateTime.MinValue) ? (_battleEndTime - _battleStartTime) : TimeSpan.Zero;
-                        string durationStr = duration != TimeSpan.Zero ? $"{(int)duration.TotalMinutes} phút {duration.Seconds} giây" : "Không xác định";
-                        string timeLog = $"Kết quả: {result} | Bắt đầu: {_battleStartTime:HH:mm:ss} | Kết thúc: {_battleEndTime:HH:mm:ss} | Thời gian: {durationStr}";
-                        _resultLogger?.Invoke(timeLog);
-                        SaveResultLogToFile(timeLog);
-                        _battleStartTime = DateTime.MinValue;
-                        _isSurrendered = false; // Reset flag surrender
-                        await Task.Delay(1000, cancellationToken);
-                        break;
-
-                    case "ValorChest":
-                        await _battleSvc.ClickClamContinue(deviceId, log);
-                        await Task.Delay(1000, cancellationToken);
-                        break;
-                    case "CombatBoosts":
-                        log("Phát hiện màn hình CombatBoosts - đang xử lý...");
-                        await _battleSvc.ClickCombatBoosts(deviceId, log);
-                        await Task.Delay(1000, cancellationToken);
-
-                        // Kiểm tra xem đã thoát khỏi CombatBoosts chưa
-                        if (!_screenSvc.IsCombatBoostsScreen(deviceId, log)) {
-
-                            log("✅ Đã thoát khỏi CombatBoosts thành công");
-                            break;
-                        }
-                        else {
-                            log("Error Restart");
-                            await RestartAppSafe(deviceId, log, cancellationToken);
-                            break;
-                        }
-
-                    case "WaitPvp":
-                    case "PVP":
-                        _lastDefaultScreenTime = DateTime.MinValue;
-                        log("Waiting in PVP screen.");
-
-                        // Kiểm tra và bật chế độ thua trong PVP
-                        if (_loseMode && _targetLoseCount > 0 && !_shouldSurrenderForTotalLose) {
-                            log($"Bật chế độ thua trong PVP: {_targetLoseCount} lượt còn lại");
-                            _shouldSurrenderForTotalLose = true;
-                        }
-
-                        await Task.Delay(3000, cancellationToken);
-                        break;
-
-                    //case "unknown":
-                    //    log("Unknown screen detected. Capturing screenshot for analysis...");
-                    //    await SaveUnknownScreenScreenshot(deviceId, log);
-                    //    log("Restarting app.");
-                    //   // await RestartAppSafe(deviceId, log, cancellationToken);
-                    //    _lastDefaultScreenTime = DateTime.MinValue;
-                    //    break;
-
-                    default:
+                    case ScreenType.Unknown:
                         if (!EnsureAppRunning(deviceId, log)) {
                             log("App is not running. Opening...");
                             _appCtrl.Open(deviceId, _packageName);
                             log("App opened. Waiting 45s for loading...");
                             await Task.Delay(45000, cancellationToken);
-                            // After opening, we should re-check everything from the start.
-                            continue;
+                            return;
                         }
-                        if (_lastDefaultScreenTime == DateTime.MinValue) {
-                            _lastDefaultScreenTime = DateTime.UtcNow;
-                            log($"Unhandled screen: '{screen}'. Starting 90s timeout.");
-                        }
-                        else if ((DateTime.UtcNow - _lastDefaultScreenTime).TotalSeconds > 90) {
-                            //log($"Stuck on an unhandled screen for >90s. Capturing screenshot and restarting app. Last screen: '{screen}'");
-                            await SaveUnknownScreenScreenshot(deviceId, log);
-                            await RestartAppSafe(deviceId, log, cancellationToken);
-                            _lastDefaultScreenTime = DateTime.MinValue;
-                        }
-                        else {
-                            //log($"Waiting on unhandled screen '{screen}'. Time elapsed: {(DateTime.UtcNow - _lastDefaultScreenTime).TotalSeconds:F0}s"); 
-                            await Task.Delay(3000, cancellationToken);
-                        }
+                        await HandleUnknownScreen(deviceId, screenName, log, cancellationToken);
+                        break;
+
+                    default:
+                        await HandleUnknownScreen(deviceId, screenName, log, cancellationToken);
                         break;
                 }
 
             }
+        }
+
+        /// <summary>
+        /// Kiểm tra thời gian hiển thị của màn hình hiện tại; nếu >120s thì reset app.
+        /// </summary>
+        private async Task CheckScreenTimeout(string deviceId, string screenName, Action<string> log, CancellationToken ct) {
+            if (string.IsNullOrEmpty(screenName)) return;
+
+            if (_currentScreenName == null || _currentScreenName != screenName) {
+                _currentScreenName = screenName;
+                _currentScreenStartTime = DateTime.UtcNow;
+                return;
+            }
+
+            double elapsed = (DateTime.UtcNow - _currentScreenStartTime).TotalSeconds;
+            if (elapsed > 120) {
+                log($"⏰ Màn hình '{screenName}' hiển thị liên tục {elapsed:F0}s (>120s). Đang reset app...");
+                await RestartAppSafe(deviceId, log, ct);
+                _currentScreenName = null;
+                _currentScreenStartTime = DateTime.MinValue;
+            }
+        }
+
+        private async Task HandleMainScreen(string deviceId, Action<string> log, CancellationToken cancellationToken) {
+            _lastDefaultScreenTime = DateTime.MinValue;
+            _isSurrendered = false; // Reset flag khi về màn hình chính
+            _surrenderTime = DateTime.MinValue; // Reset thời gian bỏ cuộc
+            log("Main screen detected.");
+
+            // Kiểm tra và bật chế độ thua trước khi vào PVP
+            if (_loseMode && _targetLoseCount > 0) {
+
+                log($"Chế độ thua đang bật: {_targetLoseCount} lượt còn lại");
+                _shouldSurrenderForTotalLose = true;
+                _isPVP = true;
+                _pvpNav.GoToPvp(deviceId, log);
+                await Task.Delay(1000, cancellationToken);
+                return;
+
+            }
+            if (_surrenderAfterWinCount > 0 || _shouldSurrenderNext || _shouldSurrenderForTotalLose) {
+
+                log($"Chế độ thua đang bật: {_targetLoseCount} lượt còn lại");
+                //_shouldSurrenderForTotalLose = true;
+                log("Navigating to PVP.");
+                _isPVP = true;
+                _pvpNav.GoToPvp(deviceId, log);
+                await Task.Delay(1000, cancellationToken);
+                return;
+
+            }
+            // Điều hướng theo cấu hình UI (PVP hoặc Astra)
+            if (_preferPvp) {
+                _isPVP = true;
+                _pvpNav.GoToPvp(deviceId, log);
+            }
+            else {
+                _isPVP = false;
+                _pvpNav.GoToAstra(deviceId, log);
+            }
+            await Task.Delay(1000, cancellationToken);
         }
 
         private bool EnsureAppRunning(string deviceId, Action<string> log) {
             bool running = _adb.IsAppRunning(deviceId, _packageName);
             log(running ? "App is running." : "App is not running.");
             return running;
-        }
-
-        private async Task WaitForLoading(string deviceId, Func<Bitmap, string> ocrFunc, Action<string> log, CancellationToken cancellationToken) {
-            int waited = 0;
-            while (waited < 90000) {
-                if (cancellationToken.IsCancellationRequested) return;
-
-                if (!_screenSvc.IsScreenLoadingByOcr(deviceId, ocrFunc, log)) {
-                    log("Loading finished.");
-                    return;
-                }
-                log("Still loading...");
-                await Task.Delay(3000, cancellationToken);
-                waited += 3000;
-            }
-            log("Timeout while loading - restarting.");
-            await RestartAppSafe(deviceId, log, cancellationToken);
         }
 
         private async Task RestartAppSafe(string deviceId, Action<string> log, CancellationToken cancellationToken) {
@@ -404,97 +288,6 @@ namespace LUDUS.Logic {
             log("Đang chờ app khởi động lại...");
             await Task.Delay(15000, cancellationToken); // Chờ app load xong
             _lastDefaultScreenTime = DateTime.MinValue;
-        }
-
-        private async Task RestartLDPlayer(Action<string> log) {
-            try {
-                log("Đang tắt LDPlayer...");
-
-                // Tắt tất cả process của LDPlayer
-                var ldPlayerProcesses = System.Diagnostics.Process.GetProcessesByName("dnplayer");
-                foreach (var process in ldPlayerProcesses) {
-                    try {
-                        process.Kill();
-                        process.WaitForExit(5000);
-                    } catch { }
-                }
-
-                await Task.Delay(3000); // Chờ tắt hoàn toàn
-
-                log("Đang khởi động lại LDPlayer...");
-
-                // Đường dẫn mặc định của LDPlayer
-                string ldPlayerPath = @"C:\LDPlayer\LDPlayer9\dnplayer.exe";
-                if (!File.Exists(ldPlayerPath)) {
-                    ldPlayerPath = @"C:\Program Files (x86)\LDPlayer\LDPlayer9\dnplayer.exe";
-                }
-
-                if (File.Exists(ldPlayerPath)) {
-                    // Khởi động LDPlayer
-                    var process = System.Diagnostics.Process.Start(ldPlayerPath);
-
-                    // Chờ một chút để LDPlayer khởi động
-                    await Task.Delay(2000);
-
-                    // Tìm và minimize cửa sổ LDPlayer
-                    try {
-                        var ldPlayerProcesses2 = System.Diagnostics.Process.GetProcessesByName("dnplayer");
-                        foreach (var proc in ldPlayerProcesses2) {
-                            if (proc.MainWindowHandle != IntPtr.Zero) {
-                                // Minimize cửa sổ
-                                LUDUS.Utils.Win32.ShowWindow(proc.MainWindowHandle, LUDUS.Utils.Win32.SW_MINIMIZE);
-                                log("Đã minimize cửa sổ LDPlayer.");
-                                break;
-                            }
-                        }
-                    } catch (Exception ex) {
-                        log($"Không thể minimize cửa sổ LDPlayer: {ex.Message}");
-                    }
-
-                    log("Đã khởi động LDPlayer ở chế độ minimized");
-                }
-                else {
-                    log("Không tìm thấy LDPlayer. Vui lòng khởi động thủ công.");
-                }
-            } catch (Exception ex) {
-                log($"Lỗi khi khởi động lại LDPlayer: {ex.Message}");
-            }
-        }
-
-        private async Task WaitForLDPlayerReady(string deviceId, Action<string> log, CancellationToken cancellationToken) {
-            log("Đang chờ LDPlayer khởi động và kết nối ADB...");
-
-            int maxWaitTime = 120; // Tối đa 2 phút
-            int waited = 0;
-
-            while (waited < maxWaitTime * 1000) {
-                if (cancellationToken.IsCancellationRequested) return;
-
-                try {
-                    // Kiểm tra kết nối ADB bằng DeviceManager
-                    _deviceManager.Refresh();
-                    if (_deviceManager.Devices.Any(d => d.Contains(deviceId))) {
-                        log("✅ LDPlayer đã khởi động và kết nối ADB thành công");
-
-                        // Chờ thêm một chút để đảm bảo ổn định
-                        await Task.Delay(5000, cancellationToken);
-
-                        // Mở app
-                        log("Đang mở app...");
-                        _appCtrl.Open(deviceId, _packageName);
-                        log("App đã được mở. Chờ 30s để load...");
-                        await Task.Delay(30000, cancellationToken);
-
-                        return;
-                    }
-                } catch { }
-
-                log($"Chờ LDPlayer khởi động... ({waited / 1000}s/{maxWaitTime}s)");
-                await Task.Delay(5000, cancellationToken);
-                waited += 5000;
-            }
-
-            log("❌ Timeout chờ LDPlayer khởi động. Vui lòng kiểm tra thủ công.");
         }
 
         public int WinCount => _winCount;
@@ -555,5 +348,220 @@ namespace LUDUS.Logic {
                 log($"❌ Lỗi khi lưu ảnh màn hình không xác định: {ex.Message}");
             }
         }
+
+        // ===== Các hàm handler tách riêng =====
+
+        private async Task HandleLoadingScreen(Action<string> log, CancellationToken ct) {
+            _isSurrendered = false; // Reset flag khi loading
+            _surrenderTime = DateTime.MinValue; // Reset thời gian bỏ cuộc
+            log("Loading screen detected");
+            await Task.Delay(5000, ct);
+        }
+
+        private async Task HandleBattleScreen(string deviceId, Action<string> log, CancellationToken ct) {
+            // Nếu đã bỏ cuộc trong lần gọi trước, chỉ chờ màn hình kết thúc
+            if (_isSurrendered) {
+                log("Đã bỏ cuộc, chờ màn hình kết thúc trận...");
+                await Task.Delay(2000, ct);
+                
+                // Nếu vẫn ở màn hình ToBattle sau 10 giây, có thể có vấn đề
+                if (_surrenderTime != DateTime.MinValue && (DateTime.Now - _surrenderTime).TotalSeconds > 10) {
+                    log("Đã bỏ cuộc quá lâu, reset flag để tránh stuck...");
+                    _isSurrendered = false;
+                    _surrenderTime = DateTime.MinValue;
+                    _battleStartTime = DateTime.MinValue;
+                }
+                return;
+            }
+
+            if (_isPVP) {
+                if (_surrenderAfterWinCount > 0 || _shouldSurrenderNext || _shouldSurrenderForTotalLose) {
+                    log("Sẽ tự động bỏ cuộc trận này!");
+                    _isSurrendered = true;
+                    _surrenderTime = DateTime.Now;
+                    await _battleSvc.ClickLoseAndYes(deviceId, log);
+                    _battleStartTime = DateTime.Now;
+                    await Task.Delay(1000, ct);
+                    if (_surrenderAfterWinCount > 0) _surrenderAfterWinCount--;
+                    return;
+                }
+            }
+
+            _isSurrendered = false;
+
+            RoundInfo roundInfo = await GetRoundInfoAndLog(deviceId, log);
+            int calculatedRound = roundInfo.CalculatedRound;
+
+            if (_battleStartTime == DateTime.MinValue && calculatedRound != 1) {
+                _battleStartTime = DateTime.Now;
+                log($"Đồng bộ _battleStartTime khi vào giữa trận: {calculatedRound}");
+                _battleSvc.ResetBoardState(); // Reset khi vào giữa trận
+            }
+
+            if (calculatedRound == 1) {
+                _battleStartTime = DateTime.Now;
+                log($"Bắt đầu trận mới lúc: {_battleStartTime:HH:mm:ss}");
+                _battleSvc.ResetBoardState(); // Reset khi bắt đầu trận mới
+            }
+            
+
+
+            _lastDefaultScreenTime = DateTime.MinValue;
+
+            log($">>> ROUND {calculatedRound} <<<");
+
+            await _battleSvc.ClickSpell(deviceId, calculatedRound, log);
+
+            // Logic đặc biệt cho round 5: nếu life1 = 0 và life2 = 4 thì thực hiện như round 1
+            bool isSpecialRound5 = (calculatedRound == 5 && roundInfo.Life1EmptyCount == 0 && roundInfo.Life2EmptyCount == 4);
+            
+            if (calculatedRound == 1 || isSpecialRound5) {
+                if (isSpecialRound5) {
+                    log("Round 5 đặc biệt (life1=0, life2=4): thực hiện logic như round 1");
+                }
+                await _battleSvc.ClickCoin(deviceId, 20, log);
+            }
+            else {
+                if (await _battleSvc.IsInBattleScreen(deviceId, log, ct)) {
+                    await _battleSvc.ClickCoin(deviceId, 10, log);
+                    
+                    // Logic rescan cho round 2 và 3: scan 2 lần
+                    if (calculatedRound == 2 || calculatedRound == 3) {
+                        log($"Round {calculatedRound}: Thực hiện scan và merge lần 1");
+                        bool merged1 = await _battleSvc.AnalyzeAndMerge(deviceId, log, calculatedRound);
+                        if (!merged1) log("No merge lần 1");
+                        
+                        // Scan lần 2 chỉ những ô trống, stone, hoặc merge fail
+                        log($"Round {calculatedRound}: Thực hiện scan và merge lần 2");
+                        bool merged2 = await _battleSvc.AnalyzeAndMerge(deviceId, log, calculatedRound);
+                        if (!merged2) log("No merge lần 2");
+                    } else {
+                        // Các round khác: scan 1 lần
+                        bool merged = await _battleSvc.AnalyzeAndMerge(deviceId, log, calculatedRound);
+                        if (!merged) log("No merge");
+                    }
+                }
+            }
+
+            await Task.Delay(500, ct);
+            await _battleSvc.ClickCoin(deviceId, 5, log);
+            await _battleSvc.ClickEndRound(deviceId, log);
+            await Task.Delay(500, ct);
+        }
+
+        private async Task HandleEndBattleScreen(string deviceId, Action<string> log, CancellationToken ct) {
+            _lastDefaultScreenTime = DateTime.MinValue;
+            _battleEndTime = DateTime.Now;
+            TimeSpan duration = (_battleStartTime != DateTime.MinValue) ? (_battleEndTime - _battleStartTime) : TimeSpan.Zero;
+            bool isWin = _screenSvc.DetectVictoryResult(deviceId, log);
+            if (duration != TimeSpan.Zero) {
+                if (isWin) {
+                    _winCount++;
+                    _currentWinStreak++;
+                    
+                    // Kiểm tra xem có cần bỏ cuộc theo cài đặt win/lose không
+                    if (_winLoseWinCount > 0 && _winLoseLoseCount > 0 && _currentWinStreak >= _winLoseWinCount) {
+                        _surrenderAfterWinCount = _winLoseLoseCount;
+                        log($"Đã thắng {_currentWinStreak} trận liên tiếp, sẽ bỏ cuộc {_winLoseLoseCount} trận tiếp theo");
+                        _currentWinStreak = 0; // Reset chuỗi thắng
+                    }
+                }
+                else {
+                    if (!_isSurrendered) {
+                        _loseCount++;
+                        _currentWinStreak = 0; // Reset chuỗi thắng khi thua thật
+                        if (_loseMode) {
+                            _targetLoseCount--;
+                            if (_targetLoseCount <= 0) {
+                                log("Đã đạt đủ trận thua thật sự. Tắt chế độ thua liên tục.");
+                                _loseMode = false;
+                                _shouldSurrenderForTotalLose = false;
+                            }
+                            else {
+                                log($"Thua thật sự, {_targetLoseCount} lượt còn lại.");
+                                _shouldSurrenderForTotalLose = true;
+                            }
+                        }
+                    }
+                    else {
+                        if (_loseMode) {
+                            _targetLoseCount--;
+                            if (_targetLoseCount <= 0) {
+                                log("Đã đạt đủ tổng số lượt. Tắt chế độ thua liên tục.");
+                                _loseMode = false;
+                                _shouldSurrenderForTotalLose = false;
+                            }
+                            else {
+                                log($"Đã bỏ cuộc, {_targetLoseCount} lượt còn lại.");
+                                _shouldSurrenderForTotalLose = true;
+                            }
+                        }
+                    }
+
+                    // Reset chuỗi thắng khi bỏ cuộc
+                    if (_isSurrendered) {
+                        _currentWinStreak = 0;
+                    }
+
+                    _shouldSurrenderNext = false;
+                }
+
+                string result = _isSurrendered ? "Bỏ cuộc" : (isWin ? "Thắng" : "Thua");
+
+
+                string durationStr = $"{(int)duration.TotalMinutes} phút {duration.Seconds} giây";
+                string timeLog = $"Kết quả: {result} | Bắt đầu: {_battleStartTime:HH:mm:ss} | Kết thúc: {_battleEndTime:HH:mm:ss} | Thời gian: {durationStr}";
+                _resultLogger?.Invoke(timeLog);
+                SaveResultLogToFile(timeLog);
+            }
+
+            _battleStartTime = DateTime.MinValue;
+            _isSurrendered = false;
+            _surrenderTime = DateTime.MinValue;
+            _battleSvc.ResetBoardState(); // Reset khi kết thúc trận
+            await Task.Delay(1000, ct);
+        }
+
+        private async Task HandleChestScreen(string deviceId, Action<string> log, CancellationToken ct) {
+            await _battleSvc.ClickClamContinue(deviceId, log);
+            await Task.Delay(1000, ct);
+        }
+
+        private async Task HandleCombatBoostsScreen(string deviceId, Action<string> log, CancellationToken ct) {
+            await _battleSvc.ClickCombatBoosts(deviceId, log);
+            await Task.Delay(1000, ct);
+
+            if (_screenSvc.IsCombatBoostsScreen(deviceId, log)) {
+                log("CombatBoosts Error --> Restart");
+                await RestartAppSafe(deviceId, log, ct);
+            }
+        }
+
+        private async Task HandleWaitPvpScreen(string deviceId, Action<string> log, CancellationToken ct) {
+            _lastDefaultScreenTime = DateTime.MinValue;
+
+            if (_loseMode && _targetLoseCount > 0 && !_shouldSurrenderForTotalLose) {
+                log($"Bật chế độ thua trong PVP: {_targetLoseCount} lượt còn lại");
+                _shouldSurrenderForTotalLose = true;
+            }
+
+            await Task.Delay(3000, ct);
+        }
+
+        private async Task HandleUnknownScreen(string deviceId, string screenName, Action<string> log, CancellationToken ct) {
+            if (_lastDefaultScreenTime == DateTime.MinValue) {
+                _lastDefaultScreenTime = DateTime.UtcNow;
+                log($"Unhandled screen: '{screenName}'. Starting 90s timeout.");
+            }
+            else if ((DateTime.UtcNow - _lastDefaultScreenTime).TotalSeconds > 90) {
+                await SaveUnknownScreenScreenshot(deviceId, log);
+                await RestartAppSafe(deviceId, log, ct);
+                _lastDefaultScreenTime = DateTime.MinValue;
+            }
+            else {
+                await Task.Delay(3000, ct);
+            }
+        }
+
     }
 }

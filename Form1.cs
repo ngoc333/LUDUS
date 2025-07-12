@@ -15,7 +15,7 @@ namespace LUDUS {
         private readonly ScreenCaptureService _capSvc;
         private readonly HeroMergeService _mergeService;
         private readonly HeroNameOcrService _ocrSvc;
-        private readonly BattleAnalyzerService _battleSvc;
+        private readonly BattleService _battleSvc;
         private readonly ScreenDetectionService _screenSvc;
         private readonly LudusAutoService _ludusAutoService;
         private readonly PvpNavigationService _pvpNav;
@@ -23,6 +23,7 @@ namespace LUDUS {
 
         private CancellationTokenSource _cancellationTokenSource;
         private bool _isAutoRunning = false;
+        private bool _isAppRunning = false; // trạng thái app đóng/mở
 
         public Form1() {
             InitializeComponent();
@@ -47,7 +48,7 @@ namespace LUDUS {
             );
 
             _ocrSvc = new HeroNameOcrService();
-            _battleSvc = new BattleAnalyzerService(
+            _battleSvc = new BattleService(
                  _capSvc, _adb, _ocrSvc, _mergeService, xmlPath, templatesFolder, _screenSvc);
             
             _ludusAutoService = new LudusAutoService(
@@ -75,9 +76,12 @@ namespace LUDUS {
                 }
             };
             btnOpenApp.Click += BtnOpenApp_Click;
-            btnCloseApp.Click += BtnCloseApp_Click;
-            btnStart.Click += BtnStart_Click;
-            
+            // Thiết lập nút đóng/mở app
+            btnOpenClose.Text = "Open App";
+            btnOpenClose.Click += BtnOpenClose_Click;
+            btnStartAstra.Click += BtnStartAstra_Click;
+            btnStartPvp.Click += BtnStarPvp_Click;
+
             // Thêm event handler cho numLoseCount
             numLoseCount.ValueChanged += (s, e) => {
                 if (_ludusAutoService != null)
@@ -86,28 +90,74 @@ namespace LUDUS {
                 }
             };
 
+            // Thêm event handler cho numWin và numLose
+            numWin.ValueChanged += (s, e) => {
+                if (_ludusAutoService != null)
+                {
+                    _ludusAutoService.UpdateWinLoseSettings((int)numWin.Value, (int)numLose.Value);
+                }
+            };
+
+            numLose.ValueChanged += (s, e) => {
+                if (_ludusAutoService != null)
+                {
+                    _ludusAutoService.UpdateWinLoseSettings((int)numWin.Value, (int)numLose.Value);
+                }
+            };
+
+            // Khi người dùng thay đổi lựa chọn thiết bị, cập nhật trạng thái nút Open/Close App
+            cmbDevices.SelectionChangeCommitted += (s, e) => {
+                SyncAppRunningStatus();
+            };
+
             // load devices
             LoadDevices();
+            SyncAppRunningStatus();
         }
 
-        private async void BtnStart_Click(object sender, EventArgs e) {
-            if (_isAutoRunning)
+        private Button _runningButton = null; // nút đang chạy hiện tại
+
+        // Kiểm tra app đang chạy để cập nhật nút Close/Open
+        private void SyncAppRunningStatus()
+        {
+            var deviceId = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(deviceId))
             {
-                // User wants to stop
+                _isAppRunning = false;
+                btnOpenClose.Text = "Open App";
+                return;
+            }
+
+            try
+            {
+                _isAppRunning = _adb.IsAppRunning(deviceId, _packageName);
+                btnOpenClose.Text = _isAppRunning ? "Close App" : "Open App";
+            }
+            catch (Exception ex)
+            {
+                Log($"Lỗi khi kiểm tra trạng thái app: {ex.Message}");
+                _isAppRunning = false;
+                btnOpenClose.Text = "Open App";
+            }
+        }
+
+        private async void StartAutoMode(Button triggerButton) {
+            if (_isAutoRunning) {
+                // Nếu người dùng bấm nút đang chạy => dừng
+                if (triggerButton != _runningButton) return; // Chỉ dừng khi nhấn đúng nút
+
                 Log("Stop request received. Shutting down gracefully...");
                 _cancellationTokenSource?.Cancel();
-                btnStart.Enabled = false; // Disable until the task is fully cancelled
+                if (_runningButton != null)
+                    _runningButton.Enabled = false; // Disable until the task is fully cancelled
                 _adb.StopShell(); // Dừng persistent shell khi stop
-                try
-                {
+                try {
                     // Đợi một chút để task có thể cancel
                     await Task.Delay(100);
-                }
-                catch { }
-                
+                } catch { }
+
                 _isAutoRunning = false;
-                btnStart.Text = "Start";
-                btnStart.Enabled = true;
+                ResetStartButtons();
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
                 return;
@@ -115,56 +165,83 @@ namespace LUDUS {
 
             // User wants to start
             var deviceId = cmbDevices.SelectedItem as string;
-            if (string.IsNullOrEmpty(deviceId))
-            {
+            if (string.IsNullOrEmpty(deviceId)) {
                 Log("Không có thiết bị nào được chọn. Đang thử refresh devices...");
                 RefreshDevices();
-                
+
                 // Thử lấy lại thiết bị sau khi refresh
                 deviceId = cmbDevices.SelectedItem as string;
-                if (string.IsNullOrEmpty(deviceId))
-                {
+                if (string.IsNullOrEmpty(deviceId)) {
                     Log("Vẫn không tìm thấy thiết bị nào. Vui lòng kiểm tra LDPlayer và thử lại.");
                     return;
                 }
             }
 
             _isAutoRunning = true;
-            btnStart.Text = "Stop";
+            _runningButton = triggerButton;
+            _runningButton.Text = "Stop";
+
+            // Disable nút còn lại trong khi chạy
+            if (_runningButton == btnStartAstra) btnStartPvp.Enabled = false;
+            else btnStartAstra.Enabled = false;
+
             _cancellationTokenSource = new CancellationTokenSource();
 
             _adb.StartShell(deviceId); // Khởi tạo persistent shell khi start
 
-            RESTART_AUTO:
-            try
+            // Khởi tạo cài đặt win/lose từ UI
+            if (_ludusAutoService != null)
             {
+                _ludusAutoService.UpdateWinLoseSettings((int)numWin.Value, (int)numLose.Value);
+            }
+
+        RESTART_AUTO:
+            try {
                 Log("Starting auto service...");
                 await _ludusAutoService.RunAsync(deviceId, _ocrSvc.Recognize, Log, _cancellationTokenSource.Token);
                 Log("Auto service finished gracefully.");
-            }
-            catch (OperationCanceledException)
-            {
+            } catch (OperationCanceledException) {
                 Log("Auto service stopped by user.");
-            }
-            catch (Exception ex)
-            {
+            } catch (Exception ex) {
                 Log($"An error occurred: {ex.Message}");
-                if (_isAutoRunning && (_cancellationTokenSource == null || !_cancellationTokenSource.IsCancellationRequested))
-                {
-                    Log("Tự động khởi động lại auto service sau lỗi...");
-                    await Task.Delay(3000);
-                    goto RESTART_AUTO;
+                if (_isAutoRunning && (_cancellationTokenSource == null || !_cancellationTokenSource.IsCancellationRequested)) {
+                    Log("Thử khởi động lại app...");
+                    bool appOk = await RestartAppOnlyAsync(deviceId);
+                    if (appOk) {
+                        // đảm bảo shell active
+                        _adb.StartShell(deviceId);
+                        goto RESTART_AUTO;
+                    }
+
+                    Log("Không thể khởi động lại app, thử khởi động lại LDPlayer...");
+                    _adb.StopShell();
+                    string newDevice = await RestartEmulatorAndAppAsync();
+                    if (!string.IsNullOrEmpty(newDevice))
+                    {
+                        deviceId = newDevice;
+                        _adb.StartShell(deviceId);
+                        goto RESTART_AUTO;
+                    }
+                    else
+                    {
+                        Log("Không thể khởi động lại LDPlayer/app. Dừng auto.");
+                    }
                 }
-            }
-            finally
-            {
+            } finally {
                 _isAutoRunning = false;
-                btnStart.Text = "Start";
-                btnStart.Enabled = true;
+                ResetStartButtons();
+                _runningButton = null;
                 _adb.StopShell(); // Đảm bảo dừng shell khi kết thúc
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
             }
+        }
+
+        private void ResetStartButtons() {
+            btnStartAstra.Text = "Start Astra";
+            btnStartPvp.Text = "Start PVP";
+            btnStartAstra.Enabled = true;
+            btnStartPvp.Enabled = true;
         }
 
         private void LoadDevices() {
@@ -174,6 +251,7 @@ namespace LUDUS {
             if (_devMgr.Devices.Count > 0)
                 cmbDevices.SelectedItem = _devMgr.CurrentDevice;
             Log($"Devices loaded: {_devMgr.Devices.Count} thiết bị tìm thấy.");
+            SyncAppRunningStatus();
         }
 
         private void RefreshDevices() {
@@ -210,6 +288,9 @@ namespace LUDUS {
                 {
                     Log("❌ Không tìm thấy thiết bị nào. Vui lòng kiểm tra:");
                 }
+
+                // Sau khi refresh, đồng bộ trạng thái app
+                SyncAppRunningStatus();
             }
             catch (Exception ex)
             {
@@ -249,7 +330,7 @@ namespace LUDUS {
                 var process = System.Diagnostics.Process.Start(ldPlayerPath);
                 
                 // Chờ một chút để LDPlayer khởi động
-                Thread.Sleep(2000);
+                await Task.Delay(2000);
                 
                 // Tìm và minimize cửa sổ LDPlayer
                 try
@@ -294,8 +375,8 @@ namespace LUDUS {
                 
                 while (waited < maxWaitTime * 1000)
                 {
-                    // Refresh danh sách thiết bị
-                    _devMgr.Refresh();
+                    // Refresh danh sách thiết bị (off UI thread)
+                    await Task.Run(() => _devMgr.Refresh());
                     
                     if (_devMgr.Devices.Count > 0)
                     {
@@ -340,13 +421,243 @@ namespace LUDUS {
             }
         }
 
-        private void BtnCloseApp_Click(object sender, EventArgs e) {
-            var dev = _devMgr.CurrentDevice;
-            if (dev != null && _appCtrl.Close(dev, _packageName))
-                Log("App closed.");
-            else
-                Log("Close app failed.");
+        private void BtnStartAstra_Click(object sender, EventArgs e) {
+            _ludusAutoService.SetPreferPvp(false);
+            StartAutoMode(btnStartAstra);
         }
+
+        private void BtnStarPvp_Click(object sender, EventArgs e) {
+            _ludusAutoService.SetPreferPvp(true);
+            StartAutoMode(btnStartPvp);
+        }
+
+        // Đóng/mở app theo nút btnOpenClose
+        private async void BtnOpenClose_Click(object sender, EventArgs e)
+        {
+            var deviceId = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(deviceId))
+            {
+                Log("Không có thiết bị nào được chọn. Đang thử refresh devices...");
+                RefreshDevices();
+                deviceId = cmbDevices.SelectedItem as string;
+                if (string.IsNullOrEmpty(deviceId))
+                {
+                    Log("Vẫn không tìm thấy thiết bị nào. Vui lòng kiểm tra LDPlayer và thử lại.");
+                    return;
+                }
+            }
+
+            if (_isAppRunning)
+            {
+                Log("Đang đóng app...");
+                var closed = _appCtrl.Close(deviceId, _packageName);
+                if (closed)
+                {
+                    Log("Đã đóng app thành công.");
+                    _isAppRunning = false;
+                    btnOpenClose.Text = "Open App";
+                }
+                else
+                {
+                    Log("Đóng app thất bại.");
+                }
+            }
+            else
+            {
+                Log("Đang mở app...");
+                var opened = _appCtrl.Open(deviceId, _packageName);
+                if (opened)
+                {
+                    Log("Đã mở app thành công.");
+                    // Sau khi mở, bắt đầu kiểm tra màn hình cho đến khi vào Main
+                    btnOpenClose.Enabled = false; // khoá nút trong khi chờ
+                    await WaitUntilMainScreenAsync(deviceId);
+                    _isAppRunning = true;
+                    btnOpenClose.Text = "Close App";
+                    btnOpenClose.Enabled = true;
+                }
+                else
+                {
+                    Log("Mở app thất bại.");
+                }
+            }
+        }
+
+        private async Task WaitUntilMainScreenAsync(string deviceId)
+        {
+            // Đảm bảo shell được khởi tạo để _adb.RunShellPersistent hoạt động
+            _adb.StartShell(deviceId);
+
+            Log("🔍 Bắt đầu kiểm tra màn hình cho đến khi vào Main...");
+            int waited = 0;
+            int maxWait = 90000; // 120 giây
+            int interval = 3000;
+
+            while (waited < maxWait)
+            {
+                string screen = await _screenSvc.DetectScreenAsync(deviceId, Log);
+                if (screen == "Main")
+                {
+                    Log("✅ Đã vào màn hình Main.");
+                    return;
+                }
+
+                await Task.Delay(interval);
+                waited += interval;
+            }
+
+            Log("⚠️ Quá thời gian chờ vào màn hình Main. Bạn có thể thử lại nếu cần.");
+            // Dừng shell nếu không cần nữa
+            _adb.StopShell();
+        }
+
+        // Khởi động lại LDPlayer và app, trả về deviceId mới nếu thành công
+        private async Task<string> RestartEmulatorAndAppAsync()
+        {
+            Log("🔄 Đang tắt LDPlayer...");
+
+            try
+            {
+                // Kill all dnplayer processes
+                var processes = System.Diagnostics.Process.GetProcessesByName("dnplayer");
+                foreach (var p in processes)
+                {
+                    try { p.Kill(); p.WaitForExit(5000); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Lỗi khi tắt LDPlayer: {ex.Message}");
+            }
+
+            await Task.Delay(3000);
+
+            Log("🚀 Khởi động LDPlayer...");
+
+            // Default LDPlayer path
+            string ldPlayerPath = @"C:\LDPlayer\LDPlayer9\dnplayer.exe";
+            if (!System.IO.File.Exists(ldPlayerPath))
+            {
+                ldPlayerPath = @"C:\Program Files (x86)\LDPlayer\LDPlayer9\dnplayer.exe";
+            }
+
+            try
+            {
+                if (System.IO.File.Exists(ldPlayerPath))
+                {
+                    var proc = System.Diagnostics.Process.Start(ldPlayerPath);
+                    await Task.Delay(2000);
+
+                    // Minimize
+                    try
+                    {
+                        var ldPlayerProcesses = System.Diagnostics.Process.GetProcessesByName("dnplayer");
+                        foreach (var p in ldPlayerProcesses)
+                        {
+                            if (p.MainWindowHandle != IntPtr.Zero)
+                            {
+                                Win32.ShowWindow(p.MainWindowHandle, Win32.SW_MINIMIZE);
+                                break;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                else
+                {
+                    Log("Không tìm thấy LDPlayer. Vui lòng kiểm tra đường dẫn cài đặt.");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Lỗi khi khởi động LDPlayer: {ex.Message}");
+                return null;
+            }
+
+            // Wait for device available
+            await WaitForDeviceAndLoad();
+
+            var deviceId = cmbDevices.SelectedItem as string;
+            if (string.IsNullOrEmpty(deviceId))
+            {
+                Log("❌ Không tìm thấy thiết bị sau khi khởi động lại LDPlayer.");
+                return null;
+            }
+
+            // Open app
+            Log("📱 Mở lại app...");
+            var opened = _appCtrl.Open(deviceId, _packageName);
+            if (!opened)
+            {
+                Log("Không thể mở app sau khi restart.");
+                return null;
+            }
+
+            // Chờ vào main screen
+            await WaitUntilMainScreenAsync(deviceId);
+
+            Log("✅ LDPlayer và app đã sẵn sàng.");
+            return deviceId;
+        }
+
+        private async Task<bool> RestartAppOnlyAsync(string deviceId)
+        {
+            Log("🔄 Đang khởi động lại app...");
+
+            // Đảm bảo shell sẵn sàng
+            _adb.StartShell(deviceId);
+
+            // Thử đóng app
+            try
+            {
+                _appCtrl.Close(deviceId, _packageName);
+            }
+            catch (Exception ex)
+            {
+                Log($"Lỗi khi đóng app: {ex.Message}");
+            }
+
+            await Task.Delay(2000);
+
+            // Mở app lại
+            bool opened = false;
+            try
+            {
+                opened = _appCtrl.Open(deviceId, _packageName);
+            }
+            catch (Exception ex)
+            {
+                Log($"Lỗi khi mở lại app: {ex.Message}");
+            }
+
+            if (!opened)
+            {
+                Log("Không thể mở lại app.");
+                return false;
+            }
+
+            // Chờ app vào Main
+            _adb.StartShell(deviceId); // đảm bảo shell tồn tại khi detect
+            int waited = 0;
+            int maxWait = 60000;
+            int interval = 3000;
+            while (waited < maxWait)
+            {
+                string screen = await _screenSvc.DetectScreenAsync(deviceId, Log);
+                if (screen == "Main")
+                {
+                    Log("✅ App đã vào màn hình Main.");
+                    return true;
+                }
+                await Task.Delay(interval);
+                waited += interval;
+            }
+
+            Log("⚠️ App không vào được màn hình Main sau khi restart.");
+            return false;
+        }
+         
 
         private void Log(string msg) {
             string logMessage = $"[{DateTime.Now:HH:mm:ss}] {msg}";

@@ -30,7 +30,7 @@ namespace LUDUS.Utils {
             }
 
             var mainScreen = regions.Element("MainScreen");
-            if (screenRegions != null) {
+            if (mainScreen != null) {
                 foreach (var xe in mainScreen.Elements("Region")) {
                     AddRegionToList(list, xe, "MainScreen");
                 }
@@ -46,7 +46,7 @@ namespace LUDUS.Utils {
 
             // Đọc HeroInfo
             var heroInfo = regions.Element("HeroInfo");
-            if (mySideCell != null) {
+            if (heroInfo != null) {
                 foreach (var xe in heroInfo.Elements("Region")) {
                     AddRegionToList(list, xe, "HeroInfo");
                 }

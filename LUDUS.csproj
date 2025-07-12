@@ -91,7 +91,7 @@
     <Compile Include="Services\ScreenDetectionService.cs" />
     <Compile Include="Services\AdbService.cs" />
     <Compile Include="Services\AppController.cs" />
-    <Compile Include="Services\BattleAnalyzerService.cs" />
+    <Compile Include="Services\BattleService.cs" />
     <Compile Include="Services\DeviceManager.cs" />
     <Compile Include="Services\HeroMergeService.cs" />
     <Compile Include="Services\HeroNameOcrService.cs" />
@@ -99,7 +99,9 @@
     <Compile Include="Services\PvpNavigationService.cs" />
     <Compile Include="Services\ScreenCaptureService.cs" />
     <Compile Include="Utils\BattleAnalyzerUtils.cs" />
+    <Compile Include="Utils\BattleMergeUtils.cs" />
     <Compile Include="Utils\ImageCompare.cs" />
+    <Compile Include="Utils\PopupDetector.cs" />
     <Compile Include="Utils\RegionLoader.cs" />
     <Compile Include="Utils\Win32.cs" />
     <EmbeddedResource Include="Form1.resx">
