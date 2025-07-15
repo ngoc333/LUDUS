@@ -88,18 +88,6 @@ namespace LUDUS.Services {
             // In the new logic, "ToBattle" is named "Battle"
             return screen == "Battle" || screen == "ToBattle";
         }
-
-        public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log) {
-            var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log);
-            if (merged) log?.Invoke("Merge ✓");
-            return merged;
-        }
-        
-        public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log, List<int> specificCells) {
-            var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log, specificCells);
-            if (merged) log?.Invoke("Merge ✓");
-            return merged;
-        }
         
         public async Task<bool> AnalyzeAndMerge(string deviceId, Action<string> log, int currentRound) {
             var (merged, _) = await AnalyzeAndMergeWithCount(deviceId, log, null, currentRound);
@@ -196,6 +184,12 @@ namespace LUDUS.Services {
                 _boardState.Add(cell);
             }
 
+            // Reset failedMergePairs khi bắt đầu round mới (sau khi scan board)
+            if (currentRound == 1) {
+                log?.Invoke("[RESET-FAILED-PAIRS] Reset failedMergePairs khi bắt đầu round mới");
+                ResetFailedMergePairs();
+            }
+
             // Kiểm tra có đủ cells để merge không
             if (_boardState.Count < 2) {
                 return (false, _boardState.Count);
@@ -207,7 +201,8 @@ namespace LUDUS.Services {
             do {
                 didMerge = await BattleMergeUtils.TryMergeAsync(
                     _capture, _adb, _templateBasePath, deviceId, _failedMergePairs, GridCols, _boardState, rows, log,
-                    (name, count, logger) => ClickCoin(deviceId, count, logger));
+                    (name, count, logger) => ClickCoin(deviceId, count, logger), 
+                    currentRound == 1); // Enable debug log cho round đầu tiên
                 if (didMerge)
                     anyMergeHappened = true;
             } while (didMerge);

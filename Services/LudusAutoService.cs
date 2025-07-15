@@ -413,20 +413,20 @@ namespace LUDUS.Logic {
             await _battleSvc.ClickSpell(deviceId, calculatedRound, log);
 
             // Logic đặc biệt cho round 5: nếu life1 = 0 và life2 = 4 thì thực hiện như round 1
-            bool isSpecialRound5 = (calculatedRound == 5 && roundInfo.Life1EmptyCount == 0 && roundInfo.Life2EmptyCount == 4);
+           // bool isSpecialRound5 = (calculatedRound == 5 && roundInfo.Life1EmptyCount == 0 && roundInfo.Life2EmptyCount == 4);
             
-            if (calculatedRound == 1 || isSpecialRound5) {
-                if (isSpecialRound5) {
-                    log("Round 5 đặc biệt (life1=0, life2=4): thực hiện logic như round 1");
-                }
-                await _battleSvc.ClickCoin(deviceId, 20, log);
+            if (calculatedRound == 1 ) {
+                //if (isSpecialRound5) {
+                //    log("Round 5 đặc biệt (life1=0, life2=4): thực hiện logic như round 1");
+                //}
+                await _battleSvc.ClickCoin(deviceId, 15, log);
             }
             else {
                 if (await _battleSvc.IsInBattleScreen(deviceId, log, ct)) {
                     await _battleSvc.ClickCoin(deviceId, 10, log);
                     
                     // Logic rescan cho round 2 và 3: scan 2 lần
-                    if (calculatedRound == 2 || calculatedRound == 3) {
+                    if (calculatedRound == 3) {
                         log($"Round {calculatedRound}: Thực hiện scan và merge lần 1");
                         bool merged1 = await _battleSvc.AnalyzeAndMerge(deviceId, log, calculatedRound);
                         if (!merged1) log("No merge lần 1");

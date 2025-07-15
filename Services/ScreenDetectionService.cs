@@ -27,34 +27,34 @@ namespace LUDUS.Services {
             _templateBasePath = templateBasePath;
         }
 
-        public string DetectScreen(string deviceId, Action<string> log) {
-            for (int attempt = 1; attempt <= MaxRetries; attempt++) {
-                using (var screenshot = _capture.Capture(deviceId) as Bitmap) {
-                    if (screenshot == null) {
-                        System.Threading.Thread.Sleep(1000);
-                        continue;
-                    }
+        //public string DetectScreen(string deviceId, Action<string> log) {
+        //    for (int attempt = 1; attempt <= MaxRetries; attempt++) {
+        //        using (var screenshot = _capture.Capture(deviceId) as Bitmap) {
+        //            if (screenshot == null) {
+        //                System.Threading.Thread.Sleep(1000);
+        //                continue;
+        //            }
 
-                    // Kiểm tra popup trước khi detect screen
-                    CheckPopupAndLog(screenshot, log);
+        //            // Kiểm tra popup trước khi detect screen
+        //            CheckPopupAndLog(screenshot, log);
 
-                    // 1. Thử template screen với OpenCV
-                    string screenResult = DetectScreenWithOpenCv(screenshot, log);
-                    if (!string.IsNullOrEmpty(screenResult)) {
-                        return screenResult;
-                    }
+        //            // 1. Thử template screen với OpenCV
+        //            string screenResult = DetectScreenWithOpenCv(screenshot, log);
+        //            if (!string.IsNullOrEmpty(screenResult)) {
+        //                return screenResult;
+        //            }
 
-                    // 2. Nếu chưa detect được, thử detect + tap button
-                    string btn = DetectButtonWithOpenCvAndTap(deviceId, screenshot, log);
-                    if (!string.IsNullOrEmpty(btn)) {
-                        return btn;
-                    }
+        //            // 2. Nếu chưa detect được, thử detect + tap button
+        //            string btn = DetectButtonWithOpenCvAndTap(deviceId, screenshot, log);
+        //            if (!string.IsNullOrEmpty(btn)) {
+        //                return btn;
+        //            }
 
-                    System.Threading.Thread.Sleep(1000);
-                }
-            }
-            return "unknown";
-        }
+        //            System.Threading.Thread.Sleep(1000);
+        //        }
+        //    }
+        //    return "unknown";
+        //}
 
         // Phiên bản async thực sự: sử dụng await/async để tránh block UI
         public async Task<string> DetectScreenAsync(string deviceId, Action<string> log, System.Threading.CancellationToken ct = default) {
@@ -67,7 +67,7 @@ namespace LUDUS.Services {
                     }
 
                     // Kiểm tra popup trước khi detect screen
-                    CheckPopupAndLog(screenshot, log);
+                   // CheckPopupAndLog(screenshot, log);
 
                     // 1. Thử template screen với OpenCV
                     string screenResult = await Task.Run(() => DetectScreenWithOpenCv(screenshot, log), ct);

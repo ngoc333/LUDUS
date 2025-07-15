@@ -197,6 +197,9 @@ namespace LUDUS {
 
         RESTART_AUTO:
             try {
+                if (_cancellationTokenSource == null) {
+                    _cancellationTokenSource = new CancellationTokenSource();
+                }
                 Log("Starting auto service...");
                 await _ludusAutoService.RunAsync(deviceId, _ocrSvc.Recognize, Log, _cancellationTokenSource.Token);
                 Log("Auto service finished gracefully.");
