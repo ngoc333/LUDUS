@@ -1,7 +1,8 @@
-﻿// Services/HeroNameOcrService.cs
+// Services/HeroNameOcrService.cs
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using Tesseract;
 
 namespace LUDUS.Services {
@@ -62,11 +63,17 @@ namespace LUDUS.Services {
             bin.Dispose();
 
             // 5) OCR
-            using (var pix = PixConverter.ToPix(scaled))
-            using (var page = _engine.Process(pix, PageSegMode.SingleLine)) {
-                string txt = page.GetText().Trim();
-                scaled.Dispose();
-                return txt;
+            // Convert bitmap to byte array and then to Pix
+            using (var ms = new MemoryStream()) {
+                scaled.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                byte[] imageBytes = ms.ToArray();
+                
+                using (var pix = Pix.LoadFromMemory(imageBytes))
+                using (var page = _engine.Process(pix, PageSegMode.SingleLine)) {
+                    string txt = page.GetText().Trim();
+                    scaled.Dispose();
+                    return txt;
+                }
             }
         }
 
