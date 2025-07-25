@@ -416,14 +416,15 @@ namespace LUDUS.Logic {
            // bool isSpecialRound5 = (calculatedRound == 5 && roundInfo.Life1EmptyCount == 0 && roundInfo.Life2EmptyCount == 4);
             
             if (calculatedRound == 1 ) {
-                //if (isSpecialRound5) {
-                //    log("Round 5 đặc biệt (life1=0, life2=4): thực hiện logic như round 1");
-                //}
                 await _battleSvc.ClickCoin(deviceId, 15, log);
+                await Task.Delay(3000, ct);
+               // _battleSvc.CaptureAfterCoinClick(deviceId, calculatedRound, log);
             }
             else {
                 if (await _battleSvc.IsInBattleScreen(deviceId, log, ct)) {
                     await _battleSvc.ClickCoin(deviceId, 10, log);
+                    await Task.Delay(3000, ct); 
+                  //  _battleSvc.CaptureAfterCoinClick(deviceId, calculatedRound, log);
                     
                     // Logic rescan cho round 2 và 3: scan 2 lần
                     if (calculatedRound == 3) {

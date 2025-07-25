@@ -35,7 +35,7 @@ namespace LUDUS {
             _capSvc = new ScreenCaptureService();
             _mergeService = new HeroMergeService(_adb);
             
-            string xmlPath = Path.Combine(Application.StartupPath, "regions.xml");
+            string xmlPath = Path.Combine(Application.StartupPath, "regions.xml"); 
             string outFolder = Path.Combine(Application.StartupPath, "Screenshots", "HeroNames");
             string templatesFolder = Path.Combine(Application.StartupPath, "Templates");
 

@@ -275,29 +275,30 @@ namespace LUDUS.Services {
                         return false;
                     }
 
-                    var regions = RegionLoader.LoadPresetRegions(_regionsXmlPath)
-                                              .Where(r => r.Group == "ScreenRegions" && r.Name == "CombatBoosts");
+                    // Đường dẫn template CombatBoosts
+                    string tplPath = Path.Combine(_templateBasePath, "Screen", "CombatBoosts.png");
+                    if (!File.Exists(tplPath)) {
+                        log?.Invoke("[IsCombatBoostsScreen] Không tìm thấy template CombatBoosts.png");
+                        return false;
+                    }
 
-                    foreach (var region in regions) {
-                        // Kiểm tra rect có hợp lệ không
-                        if (region.Rect.X < 0 || region.Rect.Y < 0 ||
-                            region.Rect.Right > screenshot.Width ||
-                            region.Rect.Bottom > screenshot.Height) {
-                            log?.Invoke($"[IsCombatBoostsScreen] Rect không hợp lệ: {region.Rect}, Screenshot size: {screenshot.Width}x{screenshot.Height}");
-                            continue;
+                    using (var mat0 = BitmapConverter.ToMat(screenshot))
+                    using (var mat = new Mat())
+                    using (var tplMat = Cv2.ImRead(tplPath, ImreadModes.Color)) {
+                        if (tplMat.Empty()) {
+                            log?.Invoke("[IsCombatBoostsScreen] Không thể đọc template CombatBoosts.png");
+                            return false;
                         }
 
-                        using (var crop = screenshot.Clone(region.Rect, screenshot.PixelFormat)) {
-                            string tplPath = Path.Combine(_templateBasePath, "Screen", "CombatBoosts.png");
-                            if (!File.Exists(tplPath)) {
-                                log?.Invoke("[IsCombatBoostsScreen] Không tìm thấy template CombatBoosts.png");
-                                continue;
-                            }
+                        Cv2.CvtColor(mat0, mat, ColorConversionCodes.BGRA2BGR);
 
-                            using (var tpl = new Bitmap(tplPath)) {
-                                if (ImageCompare.AreSame(crop, tpl)) {
-                                    return true;
-                                }
+                        using (var result = new Mat()) {
+                            Cv2.MatchTemplate(mat, tplMat, result, TemplateMatchModes.CCoeffNormed);
+                            Cv2.MinMaxLoc(result, out _, out double maxVal, out _, out OpenCvSharp.Point maxLoc);
+
+                            if (maxVal >= MatchThreshold) {
+                                log?.Invoke("[IsCombatBoostsScreen] CombatBoosts detected");
+                                return true;
                             }
                         }
                     }

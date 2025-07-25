@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using LUDUS.Utils;
+using System.IO;
 
 namespace LUDUS.Services {
     // Model for each cell analysis result
@@ -78,8 +79,25 @@ namespace LUDUS.Services {
         public async Task ClickCoin(string deviceId, int count, Action<string> log) {
             log?.Invoke($"Coin x{count}");
             for (int i = 0; i < count; i++) {
-                await ClickRegion("Coin", deviceId, log, false); // Don't log every single click
+                await ClickRegion("Coin", deviceId, log, false);
                 await Task.Delay(100);
+            }
+        }
+
+        public void CaptureAfterCoinClick(string deviceId, int round, Action<string> log)
+        {
+            string screenshotDir = Path.Combine(System.Windows.Forms.Application.StartupPath, "Screenshoot");
+            if (!Directory.Exists(screenshotDir)) Directory.CreateDirectory(screenshotDir);
+            try {
+                var img = _capture.Capture(deviceId);
+                if (img != null) {
+                    string fileName = $"screen_round{round}_{DateTime.Now:yyyyMMddHHmmss}.png";
+                    string outFile = Path.Combine(screenshotDir, fileName);
+                    img.Save(outFile);
+                    log?.Invoke($"Đã chụp màn hình round {round} sau khi click coin: {outFile}");
+                }
+            } catch (Exception ex) {
+                log?.Invoke($"Lỗi khi chụp màn hình: {ex.Message}");
             }
         }
 

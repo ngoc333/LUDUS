@@ -281,24 +281,44 @@ namespace LUDUS.Utils {
                             }
 
                             // Kiểm tra các rect có hợp lệ không
-                            if (rectCheck.X < 0 || rectCheck.Y < 0 ||
-                                rectCheck.Right > newScreenshot.Width ||
-                                rectCheck.Bottom > newScreenshot.Height) {
-                                log?.Invoke($"[ScanBoardAsync] RectCheck không hợp lệ: {rectCheck}, Screenshot size: {newScreenshot.Width}x{newScreenshot.Height}");
+                            // if (rectCheck.X < 0 || rectCheck.Y < 0 ||
+                            //     rectCheck.Right > newScreenshot.Width ||
+                            //     rectCheck.Bottom > newScreenshot.Height) {
+                            //     log?.Invoke($"[ScanBoardAsync] RectCheck không hợp lệ: {rectCheck}, Screenshot size: {newScreenshot.Width}x{newScreenshot.Height}");
+                            //     continue;
+                            // }
+
+                            // using (var bmpCheck = newScreenshot.Clone(rectCheck, newScreenshot.PixelFormat))
+                            // using (var tpl = new Bitmap(Path.Combine(templateBasePath, "Battle", "HeroCheck.png"))) {
+                            //     if (!ImageCompare.AreSame(bmpCheck, tpl)) {
+                            //       //  log?.Invoke($"[CHECK HERO] Index: {i}, Name: Stone, Level: -1");
+                            //         results.Add(new CellResult { Index = i, HeroName = "Stone", Level = "-1", CellRect = rect });
+                            //         continue;
+                            //     }
+                            // }
+                            // string name;
+
+                            // Kiểm tra rectLv có hợp lệ không
+                            string lv;
+                            if (rectLv.X < 0 || rectLv.Y < 0 ||
+                                rectLv.Right > newScreenshot.Width ||
+                                rectLv.Bottom > newScreenshot.Height) {
+                                log?.Invoke($"[ScanBoardAsync] RectLv không hợp lệ: {rectLv}, Screenshot size: {newScreenshot.Width}x{newScreenshot.Height}");
+                                lv = "";
+                            }
+                            else {
+                                using (var bmpLv = newScreenshot.Clone(rectLv, newScreenshot.PixelFormat)) {
+                                    var folderLv = Path.Combine(templateBasePath, "Battle", "LV");
+                                    lv = TryMatchTemplate(bmpLv, folderLv, log);
+                                }
+                            }
+                            if (string.IsNullOrEmpty(lv)) {
+                                results.Add(new CellResult { Index = i, HeroName = "Stone", Level = "-1", CellRect = rect });
                                 continue;
                             }
 
-                            using (var bmpCheck = newScreenshot.Clone(rectCheck, newScreenshot.PixelFormat))
-                            using (var tpl = new Bitmap(Path.Combine(templateBasePath, "Battle", "HeroCheck.png"))) {
-                                if (!ImageCompare.AreSame(bmpCheck, tpl)) {
-                                  //  log?.Invoke($"[CHECK HERO] Index: {i}, Name: Stone, Level: -1");
-                                    results.Add(new CellResult { Index = i, HeroName = "Stone", Level = "-1", CellRect = rect });
-                                    continue;
-                                }
-                            }
-                            string name;
-
                             // Kiểm tra rectName có hợp lệ không
+                            string name;
                             if (rectName.X < 0 || rectName.Y < 0 ||
                                 rectName.Right > newScreenshot.Width ||
                                 rectName.Bottom > newScreenshot.Height) {
@@ -316,21 +336,9 @@ namespace LUDUS.Utils {
                                     }
                                 }
                             }
-                            string lv;
+                            
 
-                            // Kiểm tra rectLv có hợp lệ không
-                            if (rectLv.X < 0 || rectLv.Y < 0 ||
-                                rectLv.Right > newScreenshot.Width ||
-                                rectLv.Bottom > newScreenshot.Height) {
-                                log?.Invoke($"[ScanBoardAsync] RectLv không hợp lệ: {rectLv}, Screenshot size: {newScreenshot.Width}x{newScreenshot.Height}");
-                                lv = "";
-                            }
-                            else {
-                                using (var bmpLv = newScreenshot.Clone(rectLv, newScreenshot.PixelFormat)) {
-                                    var folderLv = Path.Combine(templateBasePath, "Battle", "LV");
-                                    lv = TryMatchTemplate(bmpLv, folderLv, log);
-                                }
-                            }
+                            
                           //  log?.Invoke($"[CHECK HERO] Index: {i}, Name: {name}, Level: {lv}");
 
 
